@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,7 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'IDR Prototype Phase 1',
+      title: 'IDR Prototype Phase 2',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -48,6 +50,13 @@ class _MapScreenState extends State<MapScreen> {
 
   // Map Controller
   final MapController _mapController = MapController();
+
+  // WebSocket
+  WebSocketChannel? _channel;
+  String _backendIp = '192.168.1.100'; // Default, can be changed
+  String _connectionStatus = 'Disconnected';
+  String _lastServerResponse = 'None';
+  Timer? _dataSendTimer;
 
   @override
   void initState() {
@@ -86,7 +95,6 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    // Permissions are granted, start listening
     setState(() {
       _locationStatus = 'GNSS Active. Waiting for fix...';
     });
@@ -94,7 +102,7 @@ class _MapScreenState extends State<MapScreen> {
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 1, // update every 1 meter
+        distanceFilter: 1,
       ),
     ).listen((Position position) {
       setState(() {
@@ -104,7 +112,6 @@ class _MapScreenState extends State<MapScreen> {
         final latLng = LatLng(position.latitude, position.longitude);
         _trajectory.add(latLng);
         
-        // Recenter map
         _mapController.move(latLng, 18.0);
       });
     });
@@ -114,12 +121,8 @@ class _MapScreenState extends State<MapScreen> {
     _streamSubscriptions.add(
       accelerometerEventStream().listen(
         (AccelerometerEvent event) {
-          setState(() {
-            _accelerometerValues = <double>[event.x, event.y, event.z];
-          });
-        },
-        onError: (e) {
-          debugPrint("Accelerometer error: $e");
+          _accelerometerValues = <double>[event.x, event.y, event.z];
+          // We don't call setState here to avoid UI stuttering with 100Hz updates
         },
         cancelOnError: true,
       ),
@@ -127,12 +130,7 @@ class _MapScreenState extends State<MapScreen> {
     _streamSubscriptions.add(
       gyroscopeEventStream().listen(
         (GyroscopeEvent event) {
-          setState(() {
-            _gyroscopeValues = <double>[event.x, event.y, event.z];
-          });
-        },
-        onError: (e) {
-          // Ignore if gyro not supported perfectly on emulator
+          _gyroscopeValues = <double>[event.x, event.y, event.z];
         },
         cancelOnError: true,
       ),
@@ -140,21 +138,120 @@ class _MapScreenState extends State<MapScreen> {
     _streamSubscriptions.add(
       magnetometerEventStream().listen(
         (MagnetometerEvent event) {
-          setState(() {
-            _magnetometerValues = <double>[event.x, event.y, event.z];
-          });
-        },
-        onError: (e) {
-          // Ignore
+          _magnetometerValues = <double>[event.x, event.y, event.z];
         },
         cancelOnError: true,
       ),
+    );
+
+    // Update UI every 500ms instead of every sensor event
+    Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _connectWebSocket() {
+    if (_channel != null) {
+      _channel!.sink.close();
+    }
+
+    final wsUrl = Uri.parse('ws://$_backendIp:8000/ws');
+    try {
+      _channel = WebSocketChannel.connect(wsUrl);
+      setState(() {
+        _connectionStatus = 'Connected to $_backendIp';
+      });
+
+      // Listen for messages from the backend
+      _channel!.stream.listen(
+        (message) {
+          setState(() {
+            _lastServerResponse = message.toString();
+          });
+        },
+        onError: (error) {
+          setState(() {
+            _connectionStatus = 'Error: $error';
+            _channel = null;
+          });
+        },
+        onDone: () {
+          setState(() {
+            _connectionStatus = 'Disconnected';
+            _channel = null;
+          });
+        },
+      );
+
+      // Start sending data periodically
+      _dataSendTimer?.cancel();
+      _dataSendTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+        _sendDataToBackend();
+      });
+
+    } catch (e) {
+      setState(() {
+        _connectionStatus = 'Connection failed: $e';
+      });
+    }
+  }
+
+  void _sendDataToBackend() {
+    if (_channel != null && _connectionStatus.startsWith('Connected')) {
+      final data = {
+        "timestamp": DateTime.now().millisecondsSinceEpoch,
+        "gnss_active": _gnssActive,
+        "location": _currentPosition != null ? {
+          "lat": _currentPosition!.latitude,
+          "lon": _currentPosition!.longitude,
+        } : null,
+        "accel": _accelerometerValues,
+        "gyro": _gyroscopeValues,
+        "mag": _magnetometerValues,
+      };
+      _channel!.sink.add(json.encode(data));
+    }
+  }
+
+  void _showIpDialog() {
+    final TextEditingController ipController = TextEditingController(text: _backendIp);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Set Backend IP'),
+          content: TextField(
+            controller: ipController,
+            decoration: const InputDecoration(hintText: "192.168.x.x"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _backendIp = ipController.text;
+                });
+                Navigator.pop(context);
+                _connectWebSocket();
+              },
+              child: const Text('Connect'),
+            ),
+          ],
+        );
+      },
     );
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
+    _dataSendTimer?.cancel();
+    _channel?.sink.close();
     for (final subscription in _streamSubscriptions) {
       subscription.cancel();
     }
@@ -165,8 +262,15 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('IDR Prototype - Phase 1'),
+        title: const Text('IDR Phase 2'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_ethernet),
+            onPressed: _showIpDialog,
+            tooltip: 'Connect Backend',
+          )
+        ],
       ),
       body: Column(
         children: [
@@ -216,7 +320,7 @@ class _MapScreenState extends State<MapScreen> {
           
           // Data Section
           Expanded(
-            flex: 2,
+            flex: 3,
             child: Container(
               padding: const EdgeInsets.all(12.0),
               color: Colors.white,
@@ -224,6 +328,24 @@ class _MapScreenState extends State<MapScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Backend Connection UI
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Backend:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Expanded(
+                          child: Text(
+                            _connectionStatus,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              color: _connectionStatus.startsWith('Connected') ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(),
                     _buildInfoRow('Operating Mode:', _gnssActive ? 'GNSS ACTIVE' : 'GNSS BLACKOUT', Colors.green),
                     _buildInfoRow('GNSS Status:', _locationStatus, Colors.black87),
                     if (_currentPosition != null)
@@ -234,10 +356,19 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     const Divider(),
                     const Text('Live Sensor Data:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    _buildSensorRow('Accel (m/s²)', _accelerometerValues),
-                    _buildSensorRow('Gyro (rad/s)', _gyroscopeValues),
-                    _buildSensorRow('Mag (μT)', _magnetometerValues),
+                    const SizedBox(height: 4),
+                    _buildSensorRow('Accel', _accelerometerValues),
+                    _buildSensorRow('Gyro', _gyroscopeValues),
+                    _buildSensorRow('Mag', _magnetometerValues),
+                    const Divider(),
+                    const Text('Latest Server Response:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(
+                      _lastServerResponse,
+                      style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -250,7 +381,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget _buildInfoRow(String label, String value, Color valueColor) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -264,15 +395,15 @@ class _MapScreenState extends State<MapScreen> {
   Widget _buildSensorRow(String label, List<double>? values) {
     if (values == null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2.0),
-        child: Text('$label: Waiting for data...'),
+        padding: const EdgeInsets.symmetric(vertical: 1.0),
+        child: Text('$label: Waiting...'),
       );
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      padding: const EdgeInsets.symmetric(vertical: 1.0),
       child: Text(
-        '$label: X: ${values[0].toStringAsFixed(2)}, Y: ${values[1].toStringAsFixed(2)}, Z: ${values[2].toStringAsFixed(2)}',
-        style: const TextStyle(fontFamily: 'monospace'),
+        '$label: X:${values[0].toStringAsFixed(1)} Y:${values[1].toStringAsFixed(1)} Z:${values[2].toStringAsFixed(1)}',
+        style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
       ),
     );
   }
