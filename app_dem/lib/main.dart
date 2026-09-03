@@ -40,7 +40,8 @@ class _MapScreenState extends State<MapScreen> {
   Position? _realGpsPosition;
   LatLng? _destination;
   LatLng? _displayedPosition;
-  double _currentHeadingDeg = 0.0;
+  double _currentHeadingDeg = 0.0;   // raw heading from sensors/backend
+  double _displayedHeadingDeg = 0.0; // smoothed heading for the arrow (no jitter)
   
   final List<LatLng> _gnssTrajectory = [];
   final List<LatLng> _drTrajectory = [];
@@ -62,6 +63,7 @@ class _MapScreenState extends State<MapScreen> {
   String _backendIp = '192.168.1.100'; 
   String _connectionStatus = 'Disconnected';
   Timer? _dataSendTimer;
+  Timer? _reconnectTimer;
   
   // Debug info from backend
   String _backendDebugInfo = '';
@@ -79,6 +81,11 @@ class _MapScreenState extends State<MapScreen> {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location services are disabled. Please enable GPS.'), backgroundColor: Colors.red),
+        );
+      }
       return;
     }
 
@@ -86,11 +93,21 @@ class _MapScreenState extends State<MapScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied. The app cannot track your position.'), backgroundColor: Colors.red),
+          );
+        }
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission permanently denied. Enable it in app settings.'), backgroundColor: Colors.red, duration: Duration(seconds: 5)),
+        );
+      }
       return;
     }
 
@@ -117,6 +134,8 @@ class _MapScreenState extends State<MapScreen> {
           }
           
           _gnssTrajectory.add(latLng);
+          // Cap to last 500 points to prevent rendering lag
+          if (_gnssTrajectory.length > 500) _gnssTrajectory.removeAt(0);
           
           _mapController.move(latLng, _mapController.camera.zoom);
         });
@@ -161,7 +180,18 @@ class _MapScreenState extends State<MapScreen> {
 
     // Update UI every 50ms for smooth rotation (20fps)
     Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          // Low-pass filter: 85% old value + 15% new raw reading.
+          // This makes the arrow glide smoothly instead of snapping/jittering.
+          // Handle wraparound (e.g. 359° -> 1° should go forward, not spin 358°).
+          double diff = _currentHeadingDeg - _displayedHeadingDeg;
+          // Normalize diff to [-180, 180]
+          if (diff > 180) diff -= 360;
+          if (diff < -180) diff += 360;
+          _displayedHeadingDeg = (_displayedHeadingDeg + diff * 0.15) % 360;
+        });
+      }
     });
   }
 
@@ -189,8 +219,15 @@ class _MapScreenState extends State<MapScreen> {
         },
         onDone: () {
           setState(() {
-            _connectionStatus = 'Disconnected';
+            _connectionStatus = 'Disconnected — retrying...';
             _channel = null;
+          });
+          // Auto-reconnect after 5 seconds
+          _reconnectTimer?.cancel();
+          _reconnectTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted && _channel == null) {
+              _connectWebSocket();
+            }
           });
         },
       );
@@ -222,6 +259,8 @@ class _MapScreenState extends State<MapScreen> {
             _displayedPosition = latLng;
             
             _drTrajectory.add(latLng);
+            // Cap to last 500 points to prevent rendering lag
+            if (_drTrajectory.length > 500) _drTrajectory.removeAt(0);
             
             _mapController.move(latLng, _mapController.camera.zoom);
           });
@@ -306,6 +345,7 @@ class _MapScreenState extends State<MapScreen> {
   void dispose() {
     _positionStream?.cancel();
     _dataSendTimer?.cancel();
+    _reconnectTimer?.cancel();
     _channel?.sink.close();
     for (final subscription in _streamSubscriptions) {
       subscription.cancel();
@@ -386,16 +426,30 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 MarkerLayer(
                   markers: [
-                    // Destination Marker
+                    // Destination Marker with label
                     if (_destination != null)
                       Marker(
                         point: _destination!,
-                        width: 40,
-                        height: 40,
-                        child: const Icon(
-                          Icons.location_on,
-                          color: Colors.green,
-                          size: 40,
+                        width: 100,
+                        height: 60,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade700,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _displayedPosition != null
+                                  ? '${_calculateDistance(_displayedPosition!, _destination!).toStringAsFixed(0)}m (straight line)'
+                                  : 'Destination',
+                                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            const Icon(Icons.location_on, color: Colors.green, size: 32),
+                          ],
                         ),
                       ),
                     // Current Position Marker
@@ -405,7 +459,7 @@ class _MapScreenState extends State<MapScreen> {
                         width: 40,
                         height: 40,
                         child: Transform.rotate(
-                          angle: _currentHeadingDeg * (math.pi / 180),
+                          angle: _displayedHeadingDeg * (math.pi / 180),
                           child: Icon(
                             Icons.navigation,
                             color: _gnssActive ? Colors.blue : Colors.red,
@@ -503,7 +557,7 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     _buildInfoRow(
                         'Heading:',
-                        '${_currentHeadingDeg.toStringAsFixed(1)}°',
+                        '${_displayedHeadingDeg.toStringAsFixed(1)}°',
                         Colors.black,
                       ),
                     const Divider(),
