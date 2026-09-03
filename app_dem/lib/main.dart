@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -17,7 +18,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'IDR Prototype Phase 2',
+      title: 'IDR Prototype Phase 3',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -35,11 +36,15 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  // Location
-  Position? _currentPosition;
-  final List<LatLng> _trajectory = [];
+  // Location and Navigation State
+  Position? _realGpsPosition;
+  LatLng? _displayedPosition;
+  double _currentHeadingDeg = 0.0;
+  
+  final List<LatLng> _gnssTrajectory = [];
+  final List<LatLng> _drTrajectory = [];
+  
   bool _gnssActive = true;
-  String _locationStatus = 'Initializing...';
   StreamSubscription<Position>? _positionStream;
 
   // Sensors
@@ -53,10 +58,12 @@ class _MapScreenState extends State<MapScreen> {
 
   // WebSocket
   WebSocketChannel? _channel;
-  String _backendIp = '192.168.1.100'; // Default, can be changed
+  String _backendIp = '192.168.1.100'; 
   String _connectionStatus = 'Disconnected';
-  String _lastServerResponse = 'None';
   Timer? _dataSendTimer;
+  
+  // Debug info from backend
+  String _backendDebugInfo = '';
 
   @override
   void initState() {
@@ -71,9 +78,6 @@ class _MapScreenState extends State<MapScreen> {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(() {
-        _locationStatus = 'Location services are disabled.';
-      });
       return;
     }
 
@@ -81,40 +85,47 @@ class _MapScreenState extends State<MapScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        setState(() {
-          _locationStatus = 'Location permissions are denied';
-        });
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      setState(() {
-        _locationStatus = 'Location permissions are permanently denied.';
-      });
       return;
     }
 
-    setState(() {
-      _locationStatus = 'GNSS Active. Waiting for fix...';
-    });
-    
+    // Use a small distance filter to avoid jitter when standing still
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0, // Force update on any movement
       ),
     ).listen((Position position) {
-      setState(() {
-        _currentPosition = position;
-        _locationStatus = 'GNSS Active';
-        
-        final latLng = LatLng(position.latitude, position.longitude);
-        _trajectory.add(latLng);
-        
-        _mapController.move(latLng, 18.0);
-      });
+      _realGpsPosition = position;
+      
+      if (_gnssActive) {
+        setState(() {
+          final latLng = LatLng(position.latitude, position.longitude);
+          _displayedPosition = latLng;
+          
+          // Use GPS heading if it is providing valid data
+          if (position.heading > 0) {
+            _currentHeadingDeg = position.heading;
+          } else if (_magnetometerValues != null) {
+            // Fallback to rough magnetometer compass heading when stationary
+            _currentHeadingDeg = (math.atan2(-_magnetometerValues![0], _magnetometerValues![1]) * 180 / math.pi);
+          }
+          
+          _gnssTrajectory.add(latLng);
+          
+          _mapController.move(latLng, _mapController.camera.zoom);
+        });
+      }
     });
+  }
+  
+  double _calculateDistance(LatLng p1, LatLng p2) {
+    const Distance distance = Distance();
+    return distance.as(LengthUnit.Meter, p1, p2);
   }
 
   void _startSensors() {
@@ -122,7 +133,6 @@ class _MapScreenState extends State<MapScreen> {
       accelerometerEventStream().listen(
         (AccelerometerEvent event) {
           _accelerometerValues = <double>[event.x, event.y, event.z];
-          // We don't call setState here to avoid UI stuttering with 100Hz updates
         },
         cancelOnError: true,
       ),
@@ -139,13 +149,17 @@ class _MapScreenState extends State<MapScreen> {
       magnetometerEventStream().listen(
         (MagnetometerEvent event) {
           _magnetometerValues = <double>[event.x, event.y, event.z];
+          
+          if (_gnssActive && (_realGpsPosition == null || _realGpsPosition!.heading <= 0)) {
+             _currentHeadingDeg = (math.atan2(-event.x, event.y) * 180 / math.pi);
+          }
         },
         cancelOnError: true,
       ),
     );
 
-    // Update UI every 500ms instead of every sensor event
-    Timer.periodic(const Duration(milliseconds: 500), (timer) {
+    // Update UI every 50ms for smooth rotation (20fps)
+    Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (mounted) setState(() {});
     });
   }
@@ -162,12 +176,9 @@ class _MapScreenState extends State<MapScreen> {
         _connectionStatus = 'Connected to $_backendIp';
       });
 
-      // Listen for messages from the backend
       _channel!.stream.listen(
         (message) {
-          setState(() {
-            _lastServerResponse = message.toString();
-          });
+          _handleBackendMessage(message.toString());
         },
         onError: (error) {
           setState(() {
@@ -183,7 +194,7 @@ class _MapScreenState extends State<MapScreen> {
         },
       );
 
-      // Start sending data periodically
+      // Send data periodically at 5Hz
       _dataSendTimer?.cancel();
       _dataSendTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
         _sendDataToBackend();
@@ -195,15 +206,46 @@ class _MapScreenState extends State<MapScreen> {
       });
     }
   }
+  
+  void _handleBackendMessage(String message) {
+    try {
+      final jsonResponse = json.decode(message);
+      
+      if (!_gnssActive && jsonResponse['mode'] == 'DEAD_RECKONING') {
+        final estLoc = jsonResponse['estimated_location'];
+        final debug = jsonResponse['debug'];
+        
+        if (estLoc != null) {
+          final latLng = LatLng(estLoc['lat'], estLoc['lon']);
+          setState(() {
+            _displayedPosition = latLng;
+            
+            _drTrajectory.add(latLng);
+            
+            _mapController.move(latLng, _mapController.camera.zoom);
+          });
+        }
+        
+        if (debug != null) {
+          setState(() {
+             _currentHeadingDeg = debug['heading_deg'];
+             _backendDebugInfo = 'Speed: ${debug['speed']} m/s | Head: ${_currentHeadingDeg.toStringAsFixed(1)}°';
+          });
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
 
   void _sendDataToBackend() {
     if (_channel != null && _connectionStatus.startsWith('Connected')) {
       final data = {
         "timestamp": DateTime.now().millisecondsSinceEpoch,
         "gnss_active": _gnssActive,
-        "location": _currentPosition != null ? {
-          "lat": _currentPosition!.latitude,
-          "lon": _currentPosition!.longitude,
+        "location": _realGpsPosition != null ? {
+          "lat": _realGpsPosition!.latitude,
+          "lon": _realGpsPosition!.longitude,
         } : null,
         "accel": _accelerometerValues,
         "gyro": _gyroscopeValues,
@@ -226,9 +268,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
             TextButton(
@@ -246,6 +286,20 @@ class _MapScreenState extends State<MapScreen> {
       },
     );
   }
+  
+  void _toggleBlackout() {
+    setState(() {
+      _gnssActive = !_gnssActive;
+      
+      if (!_gnssActive) {
+        if (_displayedPosition != null) {
+          _drTrajectory.add(_displayedPosition!);
+        }
+      } else {
+        _backendDebugInfo = '';
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -262,8 +316,10 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('IDR Phase 2'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('IDR Phase 3'),
+        backgroundColor: _gnssActive 
+            ? Theme.of(context).colorScheme.inversePrimary 
+            : Colors.redAccent,
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_ethernet),
@@ -274,16 +330,25 @@ class _MapScreenState extends State<MapScreen> {
       ),
       body: Column(
         children: [
-          // Map Section
+          if (!_gnssActive)
+            Container(
+              width: double.infinity,
+              color: Colors.red,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: const Text(
+                'WARNING: GNSS SIGNAL LOST - USING DEAD RECKONING',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+            
           Expanded(
             flex: 3,
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: _trajectory.isNotEmpty
-                    ? _trajectory.last
-                    : const LatLng(0, 0),
-                initialZoom: 18.0,
+                initialCenter: _displayedPosition ?? const LatLng(0, 0),
+                initialZoom: 19.0,
               ),
               children: [
                 TileLayer(
@@ -293,23 +358,32 @@ class _MapScreenState extends State<MapScreen> {
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: _trajectory,
+                      points: _gnssTrajectory,
                       strokeWidth: 4.0,
                       color: Colors.blue,
                     ),
+                    Polyline(
+                      points: _drTrajectory,
+                      strokeWidth: 4.0,
+                      color: Colors.red,
+                    ),
                   ],
                 ),
-                if (_trajectory.isNotEmpty)
+                if (_displayedPosition != null)
                   MarkerLayer(
                     markers: [
                       Marker(
-                        point: _trajectory.last,
-                        width: 20,
-                        height: 20,
-                        child: const Icon(
-                          Icons.circle,
-                          color: Colors.red,
-                          size: 20,
+                        point: _displayedPosition!,
+                        width: 40,
+                        height: 40,
+                        child: Transform.rotate(
+                          // Convert heading to radians for rotation
+                          angle: _currentHeadingDeg * (math.pi / 180),
+                          child: Icon(
+                            Icons.navigation,
+                            color: _gnssActive ? Colors.blue : Colors.red,
+                            size: 32,
+                          ),
                         ),
                       ),
                     ],
@@ -318,17 +392,28 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
           
-          // Data Section
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ElevatedButton.icon(
+              onPressed: _toggleBlackout,
+              icon: Icon(_gnssActive ? Icons.gps_off : Icons.gps_fixed),
+              label: Text(_gnssActive ? 'Simulate GNSS Blackout' : 'Restore GNSS'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _gnssActive ? Colors.red.shade100 : Colors.green.shade100,
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+          ),
+          
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Container(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
               color: Colors.white,
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Backend Connection UI
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -346,29 +431,30 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
                     const Divider(),
-                    _buildInfoRow('Operating Mode:', _gnssActive ? 'GNSS ACTIVE' : 'GNSS BLACKOUT', Colors.green),
-                    _buildInfoRow('GNSS Status:', _locationStatus, Colors.black87),
-                    if (_currentPosition != null)
+                    if (!_gnssActive && _backendDebugInfo.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Text(
+                          'DR Info: $_backendDebugInfo',
+                          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    if (_displayedPosition != null)
                       _buildInfoRow(
-                        'Lat/Lon:',
-                        '${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}',
-                        Colors.black87,
+                        'Display Lat/Lon:',
+                        '${_displayedPosition!.latitude.toStringAsFixed(6)}, ${_displayedPosition!.longitude.toStringAsFixed(6)}',
+                        _gnssActive ? Colors.blue : Colors.red,
+                      ),
+                    _buildInfoRow(
+                        'Heading:',
+                        '${_currentHeadingDeg.toStringAsFixed(1)}°',
+                        Colors.black,
                       ),
                     const Divider(),
                     const Text('Live Sensor Data:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
                     _buildSensorRow('Accel', _accelerometerValues),
                     _buildSensorRow('Gyro', _gyroscopeValues),
                     _buildSensorRow('Mag', _magnetometerValues),
-                    const Divider(),
-                    const Text('Latest Server Response:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(
-                      _lastServerResponse,
-                      style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                    ),
                   ],
                 ),
               ),
