@@ -38,6 +38,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   // Location and Navigation State
   Position? _realGpsPosition;
+  LatLng? _destination;
   LatLng? _displayedPosition;
   double _currentHeadingDeg = 0.0;
   
@@ -349,6 +350,11 @@ class _MapScreenState extends State<MapScreen> {
               options: MapOptions(
                 initialCenter: _displayedPosition ?? const LatLng(0, 0),
                 initialZoom: 19.0,
+                onTap: (tapPosition, point) {
+                  setState(() {
+                    _destination = point;
+                  });
+                },
               ),
               children: [
                 TileLayer(
@@ -357,11 +363,20 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 PolylineLayer(
                   polylines: [
+                    // Line to Destination
+                    if (_destination != null && _displayedPosition != null)
+                      Polyline(
+                        points: [_displayedPosition!, _destination!],
+                        strokeWidth: 3.0,
+                        color: Colors.green,
+                      ),
+                    // Blue line for real GNSS path
                     Polyline(
                       points: _gnssTrajectory,
                       strokeWidth: 4.0,
                       color: Colors.blue,
                     ),
+                    // Red line for DR path
                     Polyline(
                       points: _drTrajectory,
                       strokeWidth: 4.0,
@@ -369,15 +384,27 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ],
                 ),
-                if (_displayedPosition != null)
-                  MarkerLayer(
-                    markers: [
+                MarkerLayer(
+                  markers: [
+                    // Destination Marker
+                    if (_destination != null)
+                      Marker(
+                        point: _destination!,
+                        width: 40,
+                        height: 40,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.green,
+                          size: 40,
+                        ),
+                      ),
+                    // Current Position Marker
+                    if (_displayedPosition != null)
                       Marker(
                         point: _displayedPosition!,
                         width: 40,
                         height: 40,
                         child: Transform.rotate(
-                          // Convert heading to radians for rotation
                           angle: _currentHeadingDeg * (math.pi / 180),
                           child: Icon(
                             Icons.navigation,
@@ -386,22 +413,51 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                  ],
+                ),
               ],
             ),
           ),
           
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: ElevatedButton.icon(
-              onPressed: _toggleBlackout,
-              icon: Icon(_gnssActive ? Icons.gps_off : Icons.gps_fixed),
-              label: Text(_gnssActive ? 'Simulate GNSS Blackout' : 'Restore GNSS'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _gnssActive ? Colors.red.shade100 : Colors.green.shade100,
-                minimumSize: const Size(double.infinity, 50),
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _toggleBlackout,
+                    icon: Icon(_gnssActive ? Icons.gps_off : Icons.gps_fixed),
+                    label: Text(_gnssActive ? 'Simulate GNSS Blackout' : 'Restore GNSS'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _gnssActive ? Colors.red.shade100 : Colors.green.shade100,
+                      minimumSize: const Size(0, 50),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _gnssTrajectory.clear();
+                      _drTrajectory.clear();
+                      _destination = null;
+                      // Keep current position if available
+                      if (_displayedPosition != null) {
+                        if (_gnssActive) {
+                          _gnssTrajectory.add(_displayedPosition!);
+                        } else {
+                          _drTrajectory.add(_displayedPosition!);
+                        }
+                      }
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade300,
+                    minimumSize: const Size(0, 50),
+                  ),
+                  child: const Icon(Icons.refresh, color: Colors.black87),
+                ),
+              ],
             ),
           ),
           
