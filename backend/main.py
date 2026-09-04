@@ -49,8 +49,8 @@ async def websocket_endpoint(websocket: WebSocket):
     heading_rad = 0.0         # Current fused heading
     last_timestamp = None
 
-    # Rolling window for accel variance (smoother step detection)
-    accel_window = deque(maxlen=5)  # last 5 samples (~1 second at 5Hz)
+    # Rolling window for accel variance (2s at 5Hz = 10 samples for stable ZUPT)
+    accel_window = deque(maxlen=10)
 
     try:
         while True:
@@ -114,14 +114,33 @@ async def websocket_endpoint(websocket: WebSocket):
                     else:
                         heading_rad = gyro_heading
 
-                    # ── 2. SPEED via rolling-window step detection ───────────
+                    # ── 2. SPEED via adaptive ZUPT (Zero-Velocity Update) ────
+                    # ZUPT: if the accel variance is low enough, the phone is
+                    # stationary. We suppress motion entirely to avoid drift.
+                    #
+                    # Thresholds tuned to real phone data:
+                    #   < 0.5  → definitely still        → speed = 0
+                    #   0.5-1.5 → possible walking       → speed proportional
+                    #   > 1.5  → clear motion (walk/run) → speed = 1.4 m/s cap
+                    #
+                    # Using a 10-sample window (2s @ 5Hz) to smooth out spikes.
                     accel_mag = math.sqrt(accel[0]**2 + accel[1]**2 + accel[2]**2)
                     accel_variance = abs(accel_mag - 9.81)
                     accel_window.append(accel_variance)
 
-                    # Use mean variance over the window to smooth out spike noise
                     mean_variance = sum(accel_window) / len(accel_window)
-                    speed = 1.3 if mean_variance > 0.2 else 0.0
+
+                    STILL_THRESHOLD  = 0.5   # below this: definitely stationary
+                    MOTION_THRESHOLD = 1.5   # above this: clear walking motion
+
+                    if mean_variance < STILL_THRESHOLD:
+                        speed = 0.0          # ZUPT: zero-velocity update
+                    elif mean_variance > MOTION_THRESHOLD:
+                        speed = 1.4          # cap at brisk walking speed (m/s)
+                    else:
+                        # Linear ramp between still and motion thresholds
+                        t = (mean_variance - STILL_THRESHOLD) / (MOTION_THRESHOLD - STILL_THRESHOLD)
+                        speed = t * 1.4
 
                     # ── 3. POSITION UPDATE ───────────────────────────────────
                     distance_moved = speed * dt
@@ -136,9 +155,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             "lon": current_lon
                         },
                         "debug": {
-                            "speed": speed,
+                            "speed": round(speed, 3),
                             "heading_deg": math.degrees(heading_rad) % 360,
-                            "accel_var": round(mean_variance, 3)
+                            "accel_var": round(mean_variance, 3),
+                            "zupt": speed == 0.0   # true = stationary, suppressing drift
                         }
                     }))
 
