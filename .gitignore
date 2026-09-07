@@ -65,7 +65,3 @@ blockchain/coverage/
 blockchain/coverage.json
 
 .cache/
-
-# Backend
-backend/prisma/*.db
-backend/prisma/*.db-journal
