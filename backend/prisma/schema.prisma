@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Beekeeper {
+  id             String   @id @default(uuid())
+  walletAddress  String?  @unique
+  name           String
+  phone          String   @unique
+  region         String
+  kvicId         String?  @unique
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  batches        HoneyBatch[]
+  whatsappUser   WhatsAppUser?
+}
+
+model HoneyBatch {
+  id              String   @id @default(uuid())
+  batchIdHash     String   @unique
+  beekeeperId     String
+  quantityGrams   Int
+  honeyType       String?
+  region          String?
+  harvestDate     DateTime?
+  metadataCID     String?
+  txHash          String?
+  status          String   @default("Created")
+  labVerified     Boolean  @default(false)
+  labReportHash   String?
+  recalled        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  beekeeper       Beekeeper @relation(fields: [beekeeperId], references: [id])
+}
+
+model WhatsAppUser {
+  id                String   @id @default(uuid())
+  waId              String   @unique
+  beekeeperId       String?  @unique
+  displayName       String?
+  language          String   @default("en")
+  conversationState String   @default("IDLE")
+  stateData         String   @default("{}")
+  registeredAt      DateTime @default(now())
+  lastActiveAt      DateTime @default(now())
+  beekeeper         Beekeeper? @relation(fields: [beekeeperId], references: [id])
+  conversationLogs  ConversationLog[]
+  diseaseReports    DiseaseReport[]
+}
+
+model ConversationLog {
+  id          String   @id @default(uuid())
+  waId        String
+  direction   String
+  messageType String
+  messageId   String   @unique
+  content     String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+  whatsappUser WhatsAppUser @relation(fields: [waId], references: [waId])
+}
+
+model DiseaseReport {
+  id              String   @id @default(uuid())
+  waId            String
+  imageUrl        String?
+  detectionResult String?
+  confidence      Float?
+  severity        String?
+  recommendations String?
+  rawResponse     String?
+  createdAt       DateTime @default(now())
+  whatsappUser    WhatsAppUser @relation(fields: [waId], references: [waId])
+}
