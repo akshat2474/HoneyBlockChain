@@ -57,11 +57,13 @@ env.bak/
 venv.bak/
 pip-delete-this-directory.txt
 
-blockchain/artifacts/
-blockchain/cache/
-blockchain/typechain/
-blockchain/typechain-types/
-blockchain/coverage/
-blockchain/coverage.json
+polygon/blockchain/artifacts/
+polygon/blockchain/cache/
+polygon/blockchain/typechain/
+polygon/blockchain/typechain-types/
+polygon/blockchain/coverage/
+polygon/blockchain/coverage.json
 
 .cache/
+polygon/blockchain/ignition/deployments/**/artifacts/
+polygon/blockchain/ignition/deployments/**/build-info/
