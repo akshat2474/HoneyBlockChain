@@ -26,10 +26,13 @@ app.use(express.json());
 // Logging
 app.use(pinoHttp({ logger }));
 
-// Rate limiting
-app.use(rateLimit({
+// Trust proxy (behind cloudflare tunnel)
+app.set('trust proxy', 1);
+
+// Rate limiting (skip webhook — Meta sends many requests per message)
+app.use('/api', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
 }));

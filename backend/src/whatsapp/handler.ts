@@ -7,9 +7,22 @@ import { handleRegistration } from './flows/registration.flow';
 import { handleBatchStatus } from './flows/batchStatus.flow';
 import { handleHiveStatus } from './flows/hiveStatus.flow';
 import { handleHealthReport } from './flows/healthReport.flow';
+import { redisService } from '../services/redis.service';
 import { logger } from '../utils/logger';
 
 export async function handleMessage(waId: string, message: any) {
+  // 1. Prevent duplicate processing of the same Meta webhook
+  if (await redisService.isDuplicateMessage(message.id)) {
+    logger.info({ msgId: message.id }, '♻️ Ignored duplicate webhook message');
+    return;
+  }
+
+  // 2. Prevent user spam (rapid-fire messages causing delayed bombardments)
+  if (await redisService.isSpamming(waId)) {
+    logger.warn({ waId }, '⚠️ Ignored message due to spam cooldown');
+    return;
+  }
+
   const { state, data } = await FSM.getState(waId);
   await whatsappClient.markAsRead(message.id);
 
@@ -21,9 +34,12 @@ export async function handleMessage(waId: string, message: any) {
 
   logger.info({ waId, state, text, interactiveId, type: message.type }, '🔀 Routing message');
 
-  // Reset keywords — always go to menu
+  // Reset keywords — go to menu
   if (['hi', 'hello', 'menu', 'start', '0'].includes(text)) {
-    await handleMainMenu(waId);
+    // Prevent bombarding the user with the menu if they just asked for it multiple times
+    if (state !== ConversationState.MAIN_MENU) {
+      await handleMainMenu(waId);
+    }
     return;
   }
 

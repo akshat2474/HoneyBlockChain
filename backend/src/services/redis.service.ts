@@ -26,5 +26,20 @@ export const redisService = {
   
   async deleteSession(waId: string) {
     await redis.del(`session:${waId}`);
+  },
+
+  // Prevents processing the exact same Meta webhook twice
+  async isDuplicateMessage(msgId: string): Promise<boolean> {
+    if (!msgId) return false;
+    // SET NX = only set if it doesn't exist. EX 86400 = expire in 24 hours.
+    const result = await redis.set(`msg:${msgId}`, '1', 'EX', 86400, 'NX');
+    return result === null; // If null, the key already existed -> it's a duplicate
+  },
+
+  // Prevents a user from spamming messages (1.5 second cooldown)
+  async isSpamming(waId: string): Promise<boolean> {
+    // 2 second cooldown lock
+    const result = await redis.set(`cooldown:${waId}`, '1', 'EX', 2, 'NX');
+    return result === null; // If null, user is on cooldown -> they are spamming
   }
 };
