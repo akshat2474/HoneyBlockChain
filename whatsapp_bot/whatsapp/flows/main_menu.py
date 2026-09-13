@@ -1,24 +1,25 @@
 from whatsapp.client import whatsapp_client
 from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
+from whatsapp.i18n import t
 
-async def handle_main_menu(wa_id: str):
+async def handle_main_menu(wa_id: str, lang: str = "en"):
     sections = [
         {
-            "title": "HoneyBlockChain Menu",
+            "title": t(lang, "menu.button_text"),
             "rows": [
-                {"id": "menu_diagnostics", "title": "🤖 AI Diagnostics", "description": "Check Hive Health (Image/Audio)"},
-                {"id": "menu_register", "title": "📋 Register Profile", "description": "Join as a Beekeeper"},
-                {"id": "menu_harvest", "title": "🍯 Log Harvest", "description": "Generate Harvest Voucher"},
-                {"id": "menu_transfer", "title": "🚚 Transfer Custody", "description": "Sell or transfer batch"},
-                {"id": "menu_verify", "title": "🔍 Verify Batch", "description": "Trace batch on blockchain"},
+                {"id": "menu_diagnostics", "title": t(lang, "menu.opt_diag"), "description": t(lang, "menu.desc_diag")},
+                {"id": "menu_register", "title": t(lang, "menu.opt_reg"), "description": t(lang, "menu.desc_reg")},
+                {"id": "menu_harvest", "title": t(lang, "menu.opt_harv"), "description": t(lang, "menu.desc_harv")},
+                {"id": "menu_transfer", "title": t(lang, "menu.opt_trans"), "description": t(lang, "menu.desc_trans")},
+                {"id": "menu_settings", "title": t(lang, "menu.opt_lang"), "description": t(lang, "menu.desc_lang")},
             ]
         }
     ]
 
     await whatsapp_client.send_list(
         wa_id,
-        "👋 *Welcome to HoneyBlockChain!*\n\nI am your AI Beekeeper Assistant. Please tap the menu below to select an option:",
+        t(lang, "menu.welcome"),
         sections
     )
     await redis_service.set_session(wa_id, ConversationState.MAIN_MENU)
