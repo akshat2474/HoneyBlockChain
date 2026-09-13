@@ -5,6 +5,8 @@ from whatsapp.flows.main_menu import handle_main_menu
 from whatsapp.flows.diagnostics import handle_diagnostics
 from whatsapp.flows.registration import handle_registration
 from whatsapp.flows.settings import handle_settings
+from whatsapp.flows.harvest import handle_harvest
+from whatsapp.flows.transfer import handle_transfer
 from whatsapp.i18n import t
 from database import SessionLocal
 from models import WhatsAppUser
@@ -77,16 +79,16 @@ async def handle_message(message: dict):
     # Handle menu selections
     if state in [ConversationState.MAIN_MENU, ConversationState.IDLE]:
         if interactive_id == "menu_diagnostics" or text == "1":
-            await handle_diagnostics(wa_id, message, ConversationState.DIAGNOSTICS_SELECT, data)
+            await handle_diagnostics(wa_id, message, ConversationState.DIAGNOSTICS_SELECT, data, lang)
             return
         elif interactive_id == "menu_register" or text == "2":
-            await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data)
+            await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, lang)
             return
         elif interactive_id == "menu_harvest" or text == "3":
-            await whatsapp_client.send_text(wa_id, t(lang, "general.coming_soon"))
+            await handle_harvest(wa_id, message, ConversationState.HARVEST_YARD_ID, data, lang)
             return
         elif interactive_id == "menu_transfer" or text == "4":
-            await whatsapp_client.send_text(wa_id, t(lang, "general.coming_soon"))
+            await handle_transfer(wa_id, message, ConversationState.TRANSFER_BATCH_ID, data, lang)
             return
         elif interactive_id == "menu_verify" or text == "5":
             await whatsapp_client.send_text(wa_id, t(lang, "general.coming_soon"))
@@ -103,15 +105,21 @@ async def handle_message(message: dict):
                 print(f"🧠 LLM Classified Intent: {intent} (Lang: {intent_res.detected_language})")
                 
                 if intent == "DIAGNOSTICS":
-                    await handle_diagnostics(wa_id, message, ConversationState.DIAGNOSTICS_SELECT, data)
+                    await handle_diagnostics(wa_id, message, ConversationState.DIAGNOSTICS_SELECT, data, lang)
                     return
                 elif intent == "REGISTRATION":
-                    await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data)
+                    await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, lang)
                     return
                 elif intent == "CHANGE_LANGUAGE":
                     await handle_settings(wa_id, message, ConversationState.SETTINGS_CHOOSE_LANGUAGE, data)
                     return
-                elif intent == "HARVEST" or intent == "TRANSFER" or intent == "VERIFY":
+                elif intent == "HARVEST":
+                    await handle_harvest(wa_id, message, ConversationState.HARVEST_YARD_ID, data, lang)
+                    return
+                elif intent == "TRANSFER":
+                    await handle_transfer(wa_id, message, ConversationState.TRANSFER_BATCH_ID, data, lang)
+                    return
+                elif intent == "VERIFY":
                     await whatsapp_client.send_text(wa_id, t(lang, "general.coming_soon"))
                     return
                     
@@ -121,9 +129,13 @@ async def handle_message(message: dict):
 
     # Route to active flow
     if state.startswith("DIAGNOSTICS_"):
-        await handle_diagnostics(wa_id, message, state, data)
+        await handle_diagnostics(wa_id, message, state, data, lang)
     elif state.startswith("REGISTRATION_"):
-        await handle_registration(wa_id, message, state, data)
+        await handle_registration(wa_id, message, state, data, lang)
+    elif state.startswith("HARVEST_"):
+        await handle_harvest(wa_id, message, state, data, lang)
+    elif state.startswith("TRANSFER_"):
+        await handle_transfer(wa_id, message, state, data, lang)
     elif state.startswith("SETTINGS_"):
         await handle_settings(wa_id, message, state, data)
     else:
