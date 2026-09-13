@@ -1,9 +1,5 @@
 import 'package:flutter/material.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Data Models
-// ─────────────────────────────────────────────────────────────────────────────
-
 class HoneyBatch {
   const HoneyBatch({
     required this.id,
@@ -16,6 +12,8 @@ class HoneyBatch {
     required this.transactionHash,
     required this.purityIndex,
     required this.status,
+    required this.lat,
+    required this.lng,
   });
 
   final String id;
@@ -28,9 +26,24 @@ class HoneyBatch {
   final String transactionHash;
   final double purityIndex;
   final BatchStatus status;
+  final double lat;
+  final double lng;
 }
 
 enum BatchStatus { registered, harvested, tested, bottled, verified }
+
+class HivePin {
+  const HivePin({
+    required this.lat,
+    required this.lng,
+    required this.label,
+    required this.isRecent,
+  });
+  final double lat;
+  final double lng;
+  final String label;
+  final bool isRecent;
+}
 
 class TraceabilityNode {
   const TraceabilityNode({
@@ -100,18 +113,12 @@ class LabResult {
   final bool passed;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock Data Service
-// ─────────────────────────────────────────────────────────────────────────────
-
 abstract final class MockData {
-  // ─── Dashboard Stats ───
   static const int totalBatchesVerified = 12450;
   static const double avgPurityIndex = 99.8;
   static const int activeBeekeepers = 842;
   static const int blockHeight = 5829104;
 
-  // ─── Beekeeper ───
   static const beekeeper = BeekeeperProfile(
     name: 'Ramesh Kumar',
     beneficiaryId: 'KVIC-HM-2024-8841',
@@ -121,7 +128,6 @@ abstract final class MockData {
     totalBatches: 37,
   );
 
-  // ─── Telemetry ───
   static const telemetry = [
     TelemetryReading(
       label: 'BROOD TEMP',
@@ -157,7 +163,6 @@ abstract final class MockData {
     ),
   ];
 
-  // ─── Featured Batches ───
   static const featuredBatches = [
     HoneyBatch(
       id: 'HC-2026-0847',
@@ -167,10 +172,10 @@ abstract final class MockData {
       origin: 'Bharatpur, Rajasthan',
       coordinates: '27.1751° N, 78.0421° E',
       timestamp: '2026-09-07 08:14:32 UTC',
-      transactionHash:
-          '0x71c8d4f209c3ae812db97a561a0c6ebd77f5a2f488b9e3d12a7c0e58b24f3a9f',
+      transactionHash: '0x71c8d4f209c3ae812db97a561a0c6ebd77f5a2f488b9e3d12a7c0e58b24f3a9f',
       purityIndex: 99.8,
       status: BatchStatus.verified,
+      lat: 27.1751, lng: 77.5030,
     ),
     HoneyBatch(
       id: 'HC-2026-0846',
@@ -180,10 +185,10 @@ abstract final class MockData {
       origin: 'Satara, Maharashtra',
       coordinates: '17.6805° N, 73.9807° E',
       timestamp: '2026-09-06 14:22:11 UTC',
-      transactionHash:
-          '0xa4e92bf813d5c710ee3a7b4f8219c6d0e5f38b91c724d063e8f0b42a17c95d8e',
+      transactionHash: '0xa4e92bf813d5c710ee3a7b4f8219c6d0e5f38b91c724d063e8f0b42a17c95d8e',
       purityIndex: 99.6,
       status: BatchStatus.verified,
+      lat: 17.6805, lng: 73.9807,
     ),
     HoneyBatch(
       id: 'HC-2026-0845',
@@ -193,14 +198,36 @@ abstract final class MockData {
       origin: 'Kodaikanal, Tamil Nadu',
       coordinates: '10.2381° N, 77.4892° E',
       timestamp: '2026-09-05 06:42:08 UTC',
-      transactionHash:
-          '0x3f8b17d2a094c6e51a823b9f04ed7c1502e6df98a4b0c31d27f5e8a9634b10c2',
+      transactionHash: '0x3f8b17d2a094c6e51a823b9f04ed7c1502e6df98a4b0c31d27f5e8a9634b10c2',
       purityIndex: 99.9,
       status: BatchStatus.bottled,
+      lat: 10.2381, lng: 77.4892,
     ),
   ];
 
-  // ─── Traceability Nodes ───
+  static const hivePins = [
+    HivePin(lat: 27.18, lng: 77.50, label: 'Bharatpur, Rajasthan',        isRecent: true),
+    HivePin(lat: 17.68, lng: 73.98, label: 'Satara, Maharashtra',         isRecent: true),
+    HivePin(lat: 10.24, lng: 77.49, label: 'Kodaikanal, Tamil Nadu',      isRecent: true),
+    HivePin(lat: 30.73, lng: 76.78, label: 'Mohali, Punjab',              isRecent: false),
+    HivePin(lat: 29.40, lng: 79.45, label: 'Nainital, Uttarakhand',       isRecent: false),
+    HivePin(lat: 25.36, lng: 74.64, label: 'Bhilwara, Rajasthan',         isRecent: true),
+    HivePin(lat: 22.57, lng: 88.36, label: 'Kolkata, West Bengal',        isRecent: false),
+    HivePin(lat: 26.85, lng: 80.91, label: 'Lucknow, Uttar Pradesh',      isRecent: false),
+    HivePin(lat: 21.25, lng: 81.63, label: 'Raipur, Chhattisgarh',        isRecent: true),
+    HivePin(lat: 23.26, lng: 77.41, label: 'Bhopal, Madhya Pradesh',      isRecent: false),
+    HivePin(lat: 15.85, lng: 74.50, label: 'Belgaum, Karnataka',          isRecent: true),
+    HivePin(lat: 13.08, lng: 80.27, label: 'Chennai, Tamil Nadu',         isRecent: false),
+    HivePin(lat: 11.00, lng: 76.95, label: 'Coimbatore, Tamil Nadu',      isRecent: true),
+    HivePin(lat: 19.08, lng: 72.88, label: 'Mumbai, Maharashtra',         isRecent: false),
+    HivePin(lat: 23.02, lng: 72.57, label: 'Ahmedabad, Gujarat',          isRecent: true),
+    HivePin(lat: 28.63, lng: 77.22, label: 'Delhi NCR',                   isRecent: false),
+    HivePin(lat: 25.59, lng: 85.13, label: 'Patna, Bihar',                isRecent: true),
+    HivePin(lat: 20.27, lng: 85.83, label: 'Bhubaneswar, Odisha',         isRecent: false),
+    HivePin(lat: 17.38, lng: 78.49, label: 'Hyderabad, Telangana',        isRecent: true),
+    HivePin(lat: 26.20, lng: 92.93, label: 'Guwahati, Assam',             isRecent: false),
+  ];
+
   static const traceabilityNodes = [
     TraceabilityNode(
       title: 'Beekeeper Harvest',
@@ -269,7 +296,6 @@ abstract final class MockData {
     ),
   ];
 
-  // ─── Lab Results ───
   static const labResults = [
     LabResult(
       metric: 'NMR PURITY',

@@ -1,112 +1,102 @@
-from fastapi import FastAPI, HTTPException
+"""HoneyChain FastAPI application entry point."""
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import auth, beekeepers, hives, batches, verify, ai
+from app.services.mqtt_subscriber import start_mqtt_subscriber
+
+app = FastAPI(
+    title="HoneyChain API",
+    description=(
+        "Backend for the HoneyChain honey provenance system. "
+        "Connects beekeepers, IoT sensors, AI inference, IPFS, "
+        "and the Polygon Amoy blockchain."
+    ),
+    version="0.2.0",
+)
+
+# Allow Flutter web and local development origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # Tighten to specific origins before production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── Routers ──────────────────────────────────────────────────────────────────
+app.include_router(auth.router)
+app.include_router(beekeepers.router)
+app.include_router(hives.router)
+app.include_router(batches.router)
+app.include_router(verify.router)
+app.include_router(ai.router)
+
+
+# ── Startup / Shutdown ────────────────────────────────────────────────────────
+@app.on_event("startup")
+def on_startup() -> None:
+    start_mqtt_subscriber()
+
+
+# ── Health / legacy endpoints ─────────────────────────────────────────────────
+@app.get("/", tags=["health"])
+def health_check():
+    return {"status": "ok", "message": "HoneyChain API is running!", "version": "0.2.0"}
+
+
+# ── Legacy endpoint (kept for backward compatibility with existing Flutter demo) ──
+from fastapi import HTTPException
 from pydantic import BaseModel
-import os
 import json
-import requests
-from web3 import Web3
-from dotenv import load_dotenv
-from eth_account import Account
-import hashlib
 from datetime import datetime
+from app.services import blockchain, ipfs
 
-load_dotenv()
 
-app = FastAPI(title="HoneyChain API")
-
-RPC_URL = os.getenv("AMOY_RPC_URL")
-PRIVATE_KEY = os.getenv("PRIVATE_KEY")
-CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS")
-PINATA_JWT = os.getenv("PINATA_JWT")
-
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
-account = Account.from_key(PRIVATE_KEY)
-
-abi_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../blockchain/artifacts/contracts/HoneyChain.sol/HoneyChain.json'))
-try:
-    with open(abi_path, 'r') as file:
-        contract_json = json.load(file)
-        contract_abi = contract_json['abi']
-    contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
-except Exception as e:
-    print(f"Warning: Could not load contract ABI from {abi_path}. Make sure you compiled the contract.")
-    contract = None
-
-class HoneyBatchRequest(BaseModel):
+class _LegacyBatchRequest(BaseModel):
     batchId: str
     quantityGrams: int
     honeyType: str
     region: str
 
 
-def upload_to_pinata(metadata_dict):
-    """Uploads a JSON dictionary to Pinata IPFS and returns the CID"""
-    url = "https://api.pinata.cloud/pinning/pinJSONToIPFS"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {PINATA_JWT}"
+@app.post("/create-batch", tags=["legacy"], include_in_schema=True)
+def legacy_create_batch(req: _LegacyBatchRequest):
+    """
+    Legacy endpoint kept for backward compatibility.
+    Prefer POST /batch (authenticated) for new integrations.
+    """
+    metadata = {
+        "batchId": req.batchId,
+        "honeyType": req.honeyType,
+        "region": req.region,
+        "quantityGrams": req.quantityGrams,
+        "timestamp": datetime.utcnow().isoformat(),
     }
-    response = requests.post(url, json={"pinataContent": metadata_dict}, headers=headers)
-    
-    if response.status_code == 200:
-        return response.json()["IpfsHash"]
-    else:
-        raise Exception(f"Pinata upload failed: {response.text}")
-
-
-@app.get("/")
-def read_root():
-    return {"status": "success", "message": "HoneyChain API is running!"}
-
-@app.post("/create-batch")
-def create_batch(batch_req: HoneyBatchRequest):
-    if not contract:
-        raise HTTPException(status_code=500, detail="Smart contract not loaded.")
+    metadata_str = json.dumps(metadata, sort_keys=True)
 
     try:
-        metadata = {
-            "batchId": batch_req.batchId,
-            "honeyType": batch_req.honeyType,
-            "region": batch_req.region,
-            "quantityGrams": batch_req.quantityGrams,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        cid, _meta_hash = ipfs.upload_json(metadata)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"IPFS upload failed: {exc}")
 
-        metadata_string = json.dumps(metadata, sort_keys=True)
-        metadata_hash = hashlib.sha256(metadata_string.encode('utf-8')).hexdigest()
-        metadata_bytes32 = Web3.to_bytes(hexstr=metadata_hash)
-
-        cid = upload_to_pinata(metadata)
-
-        batch_id_hash = Web3.keccak(text=batch_req.batchId)
-        harvest_timestamp = int(datetime.utcnow().timestamp())
-        
-        create_batch_func = contract.functions.createBatch(
-            batch_id_hash,
-            batch_req.quantityGrams,
-            harvest_timestamp,
-            cid,
-            metadata_bytes32
+    try:
+        tx_hash = blockchain.create_batch_tx(
+            batch_code=req.batchId,
+            quantity_grams=req.quantityGrams,
+            harvest_timestamp=int(datetime.utcnow().timestamp()),
+            metadata_cid=cid,
+            metadata_json_str=metadata_str,
         )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
-        estimated_gas = create_batch_func.estimate_gas({'from': account.address})
-        
-        tx = create_batch_func.build_transaction({
-            'from': account.address,
-            'nonce': w3.eth.get_transaction_count(account.address),
-            'gas': int(estimated_gas * 1.2),  # Add a 20% buffer
-            'gasPrice': w3.eth.gas_price
-        })
-
-        signed_tx = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
-        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-
-        return {
-            "status": "success",
-            "message": "Batch uploaded to IPFS and committed to Polygon!",
-            "ipfs_cid": cid,
-            "ipfs_url": f"https://gateway.pinata.cloud/ipfs/{cid}",
-            "transaction_hash": tx_hash.hex()
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "status": "success",
+        "message": "Batch uploaded to IPFS and committed to Polygon!",
+        "ipfs_cid": cid,
+        "ipfs_url": f"https://gateway.pinata.cloud/ipfs/{cid}",
+        "transaction_hash": tx_hash,
+    }

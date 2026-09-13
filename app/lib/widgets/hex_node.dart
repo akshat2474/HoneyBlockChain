@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/honey_theme.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HexNode — Supply chain hexagonal milestone node
-// ─────────────────────────────────────────────────────────────────────────────
-
 class HexNode extends StatelessWidget {
   const HexNode({
     super.key,
@@ -25,114 +21,92 @@ class HexNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = isCompleted ? AppColors.amber : AppColors.border;
-    final iconColor = isCompleted ? AppColors.amber : AppColors.textMuted;
-
     return InkWell(
       onTap: onTap,
       borderRadius: AppConstants.cardRadius,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Node column with connector line
-          Column(
-            children: [
-              // Hex-styled node indicator
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isCompleted
-                      ? AppColors.amber.withValues(alpha: 0.12)
-                      : AppColors.inset,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: accentColor, width: 1.5),
-                ),
-                child: Icon(
-                  isCompleted ? Icons.check_rounded : icon,
-                  color: iconColor,
-                  size: 18,
-                ),
-              ),
-              // Connector line
-              if (!isLast)
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              children: [
                 Container(
-                  width: 1.5,
-                  height: 48,
+                  width: 20, height: 20,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        accentColor,
-                        accentColor.withValues(alpha: 0.2),
-                      ],
+                    color: isCompleted ? AppColors.textPrimary : AppColors.inset,
+                    borderRadius: AppConstants.smallRadius,
+                    border: Border.all(
+                      color: isCompleted ? AppColors.textPrimary : AppColors.borderHi,
+                      width: 1,
                     ),
                   ),
+                  child: Icon(
+                    isCompleted ? Icons.check_rounded : icon,
+                    size: 12,
+                    color: isCompleted ? AppColors.canvas : AppColors.textMuted,
+                  ),
                 ),
-            ],
-          ),
-          const SizedBox(width: 14),
-          // Content
-          Expanded(
-            child: Container(
-              margin: EdgeInsets.only(bottom: isLast ? 0 : 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: AppConstants.cardRadius,
-                border: Border.all(
-                  color: isCompleted
-                      ? AppColors.amber.withValues(alpha: 0.25)
-                      : AppColors.border,
+                if (!isLast)
+                  Container(
+                    width: 1, height: 52,
+                    color: AppColors.border,
+                  ),
+              ],
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.only(bottom: isLast ? 0 : 8),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: AppConstants.cardRadius,
+                  border: Border.all(color: AppColors.border),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(icon, color: iconColor, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: AppTextStyles.cardHeading,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title, style: AppTextStyles.cardHeading),
+                          const SizedBox(height: 2),
+                          Text(subtitle, style: AppTextStyles.bodySmall),
+                        ],
+                      ),
+                    ),
+                    if (isCompleted)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.inset,
+                          borderRadius: AppConstants.pillRadius,
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(width: 5, height: 5,
+                                decoration: const BoxDecoration(
+                                    color: AppColors.green, shape: BoxShape.circle)),
+                            const SizedBox(width: 5),
+                            Text('DONE',
+                                style: AppTextStyles.label.copyWith(
+                                    color: AppColors.green, fontSize: 9)),
+                          ],
                         ),
                       ),
-                      if (isCompleted)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.greenGlow,
-                            borderRadius: AppConstants.pillRadius,
-                          ),
-                          child: Text(
-                            'DONE',
-                            style: AppTextStyles.label.copyWith(
-                              color: AppColors.green,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: AppTextStyles.bodySmall),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HexNodeDetailSheet — Bottom sheet showing node details
-// ─────────────────────────────────────────────────────────────────────────────
 
 class HexNodeDetailSheet extends StatelessWidget {
   const HexNodeDetailSheet({
@@ -152,67 +126,48 @@ class HexNodeDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle bar
             Center(
               child: Container(
-                width: 36,
-                height: 4,
+                width: 32, height: 3,
                 decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                    color: AppColors.borderHi,
+                    borderRadius: BorderRadius.circular(2)),
               ),
             ),
-            const SizedBox(height: 18),
-            // Title
-            Row(
-              children: [
-                Icon(icon, color: AppColors.amber, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(title, style: AppTextStyles.sectionHeading),
-                ),
-              ],
-            ),
+            const SizedBox(height: 20),
+            Text(title, style: AppTextStyles.sectionHeading),
             const SizedBox(height: 16),
             const Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 14),
-            // Detail rows
+            const SizedBox(height: 16),
             ...details.entries.map((entry) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: 120,
+                        width: 130,
                         child: Text(entry.key, style: AppTextStyles.label),
                       ),
                       Expanded(
-                        child: Text(
-                          entry.value,
-                          style: AppTextStyles.mono.copyWith(fontSize: 12),
-                          textAlign: TextAlign.right,
-                        ),
+                        child: Text(entry.value,
+                            style: AppTextStyles.mono,
+                            textAlign: TextAlign.right),
                       ),
                     ],
                   ),
                 )),
-            // Transaction hash
             if (transactionHash != null) ...[
               const Divider(height: 20, color: AppColors.border),
-              Text('TRANSACTION HASH', style: AppTextStyles.label),
+              Text('TX HASH', style: AppTextStyles.label),
               const SizedBox(height: 6),
               SelectableText(
                 transactionHash!,
-                style: AppTextStyles.mono.copyWith(
-                  fontSize: 11,
-                  color: AppColors.blue,
-                ),
+                style: AppTextStyles.mono.copyWith(color: AppColors.blue),
               ),
             ],
           ],

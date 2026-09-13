@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import '../theme/honey_theme.dart';
 import '../models/models.dart';
-import '../widgets/hexagon_painter.dart';
 import '../widgets/vercel_card.dart';
 import '../widgets/vercel_button.dart';
-
-// ═════════════════════════════════════════════════════════════════════════════
-// SCREEN 4: Beekeeper & Admin Management Portal
-// ═════════════════════════════════════════════════════════════════════════════
+import '../widgets/commit_terminal.dart';
+import '../screens/verify_screen.dart';
 
 class BeekeeperScreen extends StatefulWidget {
   const BeekeeperScreen({super.key});
-
   @override
   State<BeekeeperScreen> createState() => _BeekeeperScreenState();
 }
@@ -21,6 +17,7 @@ class _BeekeeperScreenState extends State<BeekeeperScreen> {
   String _selectedHive = 'Hive #03';
   String _selectedSource = 'Multifloral';
   bool _committed = false;
+  bool _showingTerminal = false;
 
   static const _sources = ['Mustard', 'Acacia', 'Multifloral', 'Eucalyptus'];
 
@@ -32,108 +29,176 @@ class _BeekeeperScreenState extends State<BeekeeperScreen> {
 
   void _commitBatch() {
     FocusScope.of(context).unfocus();
-    setState(() => _committed = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Batch signed and committed to Polygon.',
-          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textPrimary),
-        ),
-      ),
-    );
+    setState(() => _showingTerminal = true);
+  }
+
+  void _onTerminalComplete() {
+    setState(() {
+      _showingTerminal = false;
+      _committed = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final profile = MockData.beekeeper;
+    return Stack(
+      children: [
+        _buildContent(),
+        if (_showingTerminal)
+          Positioned.fill(
+            child: CommitTerminal(onComplete: _onTerminalComplete),
+          ),
+      ],
+    );
+  }
 
+  Widget _buildContent() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth > 700;
-
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: HexGridBackground(cellSize: 45, opacity: 0.04),
-              ),
-            ),
-            SingleChildScrollView(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: AppConstants.maxContentWidth,
+        final isWide = constraints.maxWidth > 800;
+        return SingleChildScrollView(
+          padding: AppConstants.pagePadding,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: AppConstants.maxContentWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text('Beekeeper Portal', style: AppTextStyles.pageTitle),
+                      const SizedBox(width: 12),
+                      Text('Ramesh Kumar · KVIC-HM-2024-8841',
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textMuted)),
+                    ],
                   ),
-                  child: Padding(
-                    padding: AppConstants.pagePadding,
-                    child: Column(
+                  const SizedBox(height: AppConstants.sectionSpacing),
+                  if (isWide)
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Beekeeper Portal',
-                          style: AppTextStyles.pageTitle,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Hive intelligence · Batch minting · Identity',
-                          style: AppTextStyles.body,
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Identity card
-                        _IdentityCard(profile: profile),
-                        const SizedBox(height: 24),
-
-                        // Hive telemetry
-                        const SectionLabel('Hive #03 telemetry'),
-                        _TelemetryGrid(isWide: isWide),
-                        const SizedBox(height: 8),
-
-                        // Diagnostics
-                        const SectionLabel('Server-side diagnostics'),
-                        const _DiagnosticsCard(),
-                        const SizedBox(height: 8),
-
-                        // Batch minting form
-                        const SectionLabel('Create new batch'),
-                        _BatchMintForm(
-                          quantityController: _quantityController,
-                          selectedHive: _selectedHive,
-                          selectedSource: _selectedSource,
-                          sources: _sources,
-                          onHiveChanged: (v) =>
-                              setState(() => _selectedHive = v),
-                          onSourceChanged: (v) =>
-                              setState(() => _selectedSource = v),
-                          onCommit: _commitBatch,
-                        ),
-
-                        if (_committed) ...[
-                          const SizedBox(height: 12),
-                          _CommitReceipt(
-                            hive: _selectedHive,
-                            quantity: _quantityController.text,
-                            source: _selectedSource,
-                          ),
-                        ],
-
-                        const SizedBox(height: 32),
+                        Expanded(child: _TelemetrySection()),
+                        const SizedBox(width: 24),
+                        Expanded(child: _IdentityCard(profile: MockData.beekeeper)),
                       ],
-                    ),
+                    )
+                  else
+                    Column(children: [
+                      _IdentityCard(profile: MockData.beekeeper),
+                      const SizedBox(height: AppConstants.sectionSpacing),
+                      _TelemetrySection(),
+                    ]),
+                  const SizedBox(height: AppConstants.sectionSpacing),
+                  const Divider(color: AppColors.border),
+                  const SizedBox(height: AppConstants.sectionSpacing),
+                  Text('Create New Batch', style: AppTextStyles.sectionHeading),
+                  const SizedBox(height: 16),
+                  _BatchMintForm(
+                    quantityController: _quantityController,
+                    selectedHive: _selectedHive,
+                    selectedSource: _selectedSource,
+                    sources: _sources,
+                    onHiveChanged: (v) => setState(() => _selectedHive = v),
+                    onSourceChanged: (v) => setState(() => _selectedSource = v),
+                    onCommit: _commitBatch,
                   ),
-                ),
+                  if (_committed) ...[
+                    const SizedBox(height: 16),
+                    _CommitReceipt(
+                      hive: _selectedHive,
+                      quantity: _quantityController.text,
+                      source: _selectedSource,
+                    ),
+                  ],
+                ],
               ),
             ),
-          ],
+          ),
         );
       },
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Beekeeper Identity Card
-// ─────────────────────────────────────────────────────────────────────────────
+class _TelemetrySection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('Hive Telemetry', style: AppTextStyles.sectionHeading),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.inset,
+                borderRadius: AppConstants.pillRadius,
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 5, height: 5,
+                      decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text('LIVE', style: AppTextStyles.label.copyWith(color: AppColors.green, fontSize: 9)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 1,
+          mainAxisSpacing: 1,
+          childAspectRatio: 2.2,
+          children: MockData.telemetry.map((r) => _TelemetryCell(reading: r)).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _TelemetryCell extends StatelessWidget {
+  const _TelemetryCell({required this.reading});
+  final TelemetryReading reading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(reading.label, style: AppTextStyles.label),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(reading.value, style: AppTextStyles.stat.copyWith(fontSize: 24)),
+              const SizedBox(width: 3),
+              Text(reading.unit, style: AppTextStyles.bodySmall),
+            ],
+          ),
+          Text(reading.note, style: AppTextStyles.bodySmall),
+
+        ],
+      ),
+    );
+  }
+}
 
 class _IdentityCard extends StatelessWidget {
   const _IdentityCard({required this.profile});
@@ -142,220 +207,42 @@ class _IdentityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return VercelCard(
-      borderColor: AppColors.amber.withValues(alpha: 0.2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const StatusDot(color: AppColors.green),
-              const SizedBox(width: 8),
-              Text(
-                'IDENTITY VERIFIED',
-                style: AppTextStyles.label
-                    .copyWith(color: AppColors.green, letterSpacing: 1),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(profile.name, style: AppTextStyles.sectionHeading),
-          const SizedBox(height: 4),
-          Text(profile.beneficiaryId, style: AppTextStyles.mono),
-          const Divider(height: 24, color: AppColors.border),
-          InfoRow(label: 'CLUSTER', value: profile.cluster),
-          const SizedBox(height: 8),
-          InfoRow(
-            label: 'HIVES',
-            value: '${profile.activeHives} Active',
-            valueColor: AppColors.green,
-          ),
-          const SizedBox(height: 8),
-          InfoRow(
-            label: 'WALLET',
-            value: profile.walletAddress,
-            monospace: true,
-          ),
-          const SizedBox(height: 8),
-          InfoRow(
-            label: 'BATCHES',
-            value: '${profile.totalBatches} on-chain',
-            monospace: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Hive Telemetry Grid
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TelemetryGrid extends StatelessWidget {
-  const _TelemetryGrid({required this.isWide});
-  final bool isWide;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - 12) / 2;
-
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: MockData.telemetry.map((reading) {
-            return SizedBox(
-              width: cardWidth,
-              child: _TelemetryCard(reading: reading),
-            );
-          }).toList(),
-        );
-      },
-    );
-  }
-}
-
-class _TelemetryCard extends StatelessWidget {
-  const _TelemetryCard({required this.reading});
-  final TelemetryReading reading;
-
-  @override
-  Widget build(BuildContext context) {
-    return VercelCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StatusDot(
-                color: reading.healthy ? AppColors.green : AppColors.red,
-              ),
-              const SizedBox(width: 6),
-              Icon(reading.icon, color: AppColors.textMuted, size: 14),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  reading.label,
-                  style: AppTextStyles.label,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+          Text('Identity', style: AppTextStyles.sectionHeading),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 16),
+          _infoRow('NAME', profile.name),
           const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                reading.value,
-                style: AppTextStyles.stat.copyWith(fontSize: 22),
-              ),
-              const SizedBox(width: 3),
-              Text(
-                reading.unit,
-                style: AppTextStyles.mono.copyWith(
-                  color: AppColors.textMuted,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            reading.note,
-            style: AppTextStyles.mono.copyWith(
-              color: AppColors.textMuted,
-              fontSize: 10,
-            ),
-          ),
+          _infoRow('BENEFICIARY ID', profile.beneficiaryId, mono: true),
+          const SizedBox(height: 10),
+          _infoRow('CLUSTER', profile.cluster),
+          const SizedBox(height: 10),
+          _infoRow('WALLET', profile.walletAddress, mono: true),
+          const SizedBox(height: 10),
+          _infoRow('ACTIVE HIVES', '${profile.activeHives}'),
+          const SizedBox(height: 10),
+          _infoRow('TOTAL BATCHES', '${profile.totalBatches}'),
         ],
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Diagnostics Card
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _DiagnosticsCard extends StatelessWidget {
-  const _DiagnosticsCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return VercelCard(
-      child: Column(
-        children: [
-          _DiagRow(
-            label: 'HEALTH INDEX',
-            value: '94/100',
-            caption: 'Brood stability verified',
-            color: AppColors.green,
-          ),
-          const Divider(height: 20, color: AppColors.border),
-          _DiagRow(
-            label: 'SWARM PROBABILITY',
-            value: '4%',
-            caption: 'Low risk',
-            color: AppColors.green,
-          ),
-          const Divider(height: 20, color: AppColors.border),
-          _DiagRow(
-            label: 'HARVEST FORECAST',
-            value: '4 DAYS',
-            caption: 'Optimal harvest window',
-            color: AppColors.amber,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiagRow extends StatelessWidget {
-  const _DiagRow({
-    required this.label,
-    required this.value,
-    required this.caption,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final String caption;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _infoRow(String label, String value, {bool mono = false}) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: AppTextStyles.label),
-              const SizedBox(height: 4),
-              Text(caption, style: AppTextStyles.bodySmall),
-            ],
-          ),
-        ),
-        Text(
-          value,
-          style: AppTextStyles.stat.copyWith(
-            color: color,
-            fontSize: 20,
-          ),
-        ),
+        Text(label, style: AppTextStyles.label),
+        Text(value,
+            style: mono
+                ? AppTextStyles.mono
+                : AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
       ],
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Batch Minting Form
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _BatchMintForm extends StatelessWidget {
   const _BatchMintForm({
@@ -382,23 +269,17 @@ class _BatchMintForm extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('MINT BATCH', style: AppTextStyles.cardHeading),
-          const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             initialValue: selectedHive,
             dropdownColor: AppColors.card,
-            decoration: InputDecoration(
-              labelText: 'HIVE SELECTOR',
-              labelStyle: AppTextStyles.label,
-            ),
+            decoration: const InputDecoration(labelText: 'HIVE'),
             items: List.generate(
               8,
               (i) => DropdownMenuItem(
                 value: 'Hive #${(i + 1).toString().padLeft(2, '0')}',
                 child: Text(
                   'Hive #${(i + 1).toString().padLeft(2, '0')}',
-                  style: AppTextStyles.mono
-                      .copyWith(color: AppColors.textPrimary),
+                  style: AppTextStyles.mono.copyWith(color: AppColors.textPrimary),
                 ),
               ),
             ),
@@ -407,48 +288,52 @@ class _BatchMintForm extends StatelessWidget {
           const SizedBox(height: 12),
           TextField(
             controller: quantityController,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: AppTextStyles.mono.copyWith(color: AppColors.textPrimary),
-            decoration: InputDecoration(
-              labelText: 'HARVEST QUANTITY',
-              labelStyle: AppTextStyles.label,
-              suffixText: 'kg',
-              suffixStyle: AppTextStyles.mono,
-            ),
+            decoration: const InputDecoration(labelText: 'HARVEST QUANTITY (kg)'),
           ),
           const SizedBox(height: 16),
           Text('FLORAL SOURCE', style: AppTextStyles.label),
           const SizedBox(height: 10),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: sources
-                .map((s) => _SourceChip(
-                      label: s,
-                      selected: selectedSource == s,
-                      onPressed: () => onSourceChanged(s),
-                    ))
-                .toList(),
-          ),
-          const Divider(height: 28, color: AppColors.border),
-          const InfoRow(
-            label: 'LOCKED GPS',
-            value: '27.1751° N, 78.0421° E',
-            monospace: true,
-          ),
-          const SizedBox(height: 8),
-          const InfoRow(
-            label: 'UTC TIME',
-            value: '2026-09-07 08:14:32 UTC',
-            monospace: true,
+            spacing: 8, runSpacing: 8,
+            children: sources.map((s) => _SourceChip(
+              label: s,
+              selected: selectedSource == s,
+              onPressed: () => onSourceChanged(s),
+            )).toList(),
           ),
           const SizedBox(height: 16),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('GPS', style: AppTextStyles.label),
+              Text('27.1751° N, 78.0421° E', style: AppTextStyles.mono),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('UTC', style: AppTextStyles.label),
+              Text('2026-09-07 08:14:32', style: AppTextStyles.mono),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SecondaryButton(
+            label: 'Fetch Live ESP32 Sensor Data',
+            icon: Icons.sync_outlined,
+            onPressed: () {},
+          ),
+          const SizedBox(height: 8),
           PrimaryButton(
             label: 'Sign & Commit to Polygon',
             icon: Icons.lock_outline,
             onPressed: onCommit,
           ),
+
         ],
       ),
     );
@@ -456,28 +341,22 @@ class _BatchMintForm extends StatelessWidget {
 }
 
 class _SourceChip extends StatelessWidget {
-  const _SourceChip({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
+  const _SourceChip({required this.label, required this.selected, required this.onPressed});
   final String label;
   final bool selected;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onPressed,
-      borderRadius: AppConstants.smallRadius,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? AppColors.amber : AppColors.inset,
+          color: selected ? AppColors.textPrimary : AppColors.inset,
           borderRadius: AppConstants.smallRadius,
           border: Border.all(
-            color: selected ? AppColors.amber : AppColors.border,
+            color: selected ? AppColors.textPrimary : AppColors.borderHi,
           ),
         ),
         child: Text(
@@ -492,65 +371,79 @@ class _SourceChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Commit Receipt
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _CommitReceipt extends StatelessWidget {
-  const _CommitReceipt({
-    required this.hive,
-    required this.quantity,
-    required this.source,
-  });
-
+  const _CommitReceipt({required this.hive, required this.quantity, required this.source});
   final String hive;
   final String quantity;
   final String source;
 
   @override
   Widget build(BuildContext context) {
-    return VercelCard(
-      borderColor: AppColors.green.withValues(alpha: 0.3),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: AppConstants.cardRadius,
+        border: Border(
+          left: const BorderSide(color: AppColors.green, width: 3),
+          top: AppConstants.borderSide,
+          right: AppConstants.borderSide,
+          bottom: AppConstants.borderSide,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const StatusDot(color: AppColors.green),
-              const SizedBox(width: 8),
-              Text(
-                'COMMIT CONFIRMED',
-                style: AppTextStyles.label.copyWith(
-                  color: AppColors.green,
-                  letterSpacing: 1,
+          Row(children: [
+            Container(width: 6, height: 6,
+                decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text('COMMITTED', style: AppTextStyles.label.copyWith(color: AppColors.green)),
+          ]),
+          const SizedBox(height: 12),
+          Text('HC-2026-0847', style: AppTextStyles.stat.copyWith(fontSize: 24)),
+          const SizedBox(height: 12),
+          _infoRow('PAYLOAD', '$hive · $quantity kg · $source'),
+          const SizedBox(height: 6),
+          _infoRow('GAS', '0.002 MATIC', mono: true),
+          const SizedBox(height: 6),
+          _infoRow('BLOCK', '#5829104', mono: true),
+          const SizedBox(height: 6),
+          _infoRow('TX HASH', '0x71c8...3a9f', mono: true),
+          const SizedBox(height: 16),
+          SecondaryButton(
+            label: 'Verify this Batch',
+            icon: Icons.qr_code_scanner_outlined,
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  backgroundColor: AppColors.canvas,
+                  appBar: AppBar(
+                    backgroundColor: AppColors.canvas,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.textMuted),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  body: const VerifyScreen(),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text('HC-2026-0847', style: AppTextStyles.stat),
-          const SizedBox(height: 12),
-          InfoRow(label: 'PAYLOAD', value: '$hive · $quantity kg · $source'),
-          const SizedBox(height: 8),
-          const InfoRow(
-            label: 'GAS COST',
-            value: '0.002 MATIC / ₹0.04',
-            monospace: true,
-          ),
-          const SizedBox(height: 8),
-          const InfoRow(
-            label: 'BLOCK',
-            value: '#5829104',
-            monospace: true,
-          ),
-          const SizedBox(height: 8),
-          const InfoRow(
-            label: 'TX HASH',
-            value: '0x71c8...3a9f',
-            monospace: true,
+              ));
+            },
           ),
         ],
       ),
+    );
+  }
+
+  Widget _infoRow(String label, String value, {bool mono = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: AppTextStyles.label),
+        Text(value, style: mono ? AppTextStyles.mono : AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+      ],
     );
   }
 }

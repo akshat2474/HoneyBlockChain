@@ -26,7 +26,7 @@ Thumbs.db
 *.swo
 *~
 
-logs
+/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -36,8 +36,6 @@ lerna-debug.log*
 pip-log.txt
 
 node_modules/
-dist/
-build/
 .npm
 
 __pycache__/
@@ -50,12 +48,19 @@ __pycache__/
 *.egg
 
 venv/
+venv_new/
 .venv/
 env/
 ENV/
 env.bak/
 venv.bak/
 pip-delete-this-directory.txt
+
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
 
 polygon/blockchain/artifacts/
 polygon/blockchain/cache/
@@ -64,6 +69,44 @@ polygon/blockchain/typechain-types/
 polygon/blockchain/coverage/
 polygon/blockchain/coverage.json
 
-.cache/
 polygon/blockchain/ignition/deployments/**/artifacts/
 polygon/blockchain/ignition/deployments/**/build-info/
+
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.packages
+app/pubspec.lock
+app/web/
+*.g.dart
+*.freezed.dart
+
+polygon/backend/honeychain.db
+
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.h5
+*.pkl
+
+/datasets/
+polygon/ai/disease_detection/data/
+polygon/ai/yield_prediction/data/
+
+polygon/ai/disease_detection/runs/
+polygon/ai/disease_detection/checkpoints/
+polygon/ai/yield_prediction/runs/
+polygon/ai/yield_prediction/checkpoints/
+/wandb/
+
+polygon/iot/esp32/.pio/
+polygon/iot/esp32/.vscode/
+polygon/iot/esp32/lib/
+
+/dist/
+/build/
+.cache/
+*.sqlite
+*.sqlite3
