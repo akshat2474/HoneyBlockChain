@@ -2,7 +2,7 @@ import { whatsappClient } from './client';
 import { FSM } from './fsm';
 import { ConversationState } from './states';
 import { handleMainMenu } from './flows/mainMenu.flow';
-import { handleDiseaseDetection } from './flows/diseaseDetection.flow';
+import { handleDiagnostics } from './flows/diagnostics.flow';
 import { handleRegistration } from './flows/registration.flow';
 import { handleBatchStatus } from './flows/batchStatus.flow';
 import { handleHiveStatus } from './flows/hiveStatus.flow';
@@ -46,13 +46,12 @@ export async function handleMessage(waId: string, message: any) {
   // Handle menu selections (interactive list replies)
   if (state === ConversationState.MAIN_MENU || state === ConversationState.IDLE) {
     switch (interactiveId) {
-      case 'menu_disease':
-        await whatsappClient.sendText(waId, '📸 *Bee Disease Detection*\n\nPlease send a clear photo of your beehive or honeycomb. Our AI will analyze it for common diseases like:\n\n• Varroa Mite\n• American Foulbrood\n• European Foulbrood\n• Nosema\n• Chalk Brood');
-        await FSM.setState(waId, ConversationState.DISEASE_AWAITING_IMAGE);
+      case 'menu_diagnostics':
+        await handleDiagnostics(waId, message, ConversationState.DIAGNOSTICS_SELECT, data);
         return;
 
       case 'menu_register':
-        await whatsappClient.sendText(waId, '📋 *Beekeeper Registration*\n\nLet\'s get you registered on HoneyBlockChain!\n\n*Step 1/5:* What is your full name?');
+        await whatsappClient.sendText(waId, '📋 *Beekeeper Registration*\n\nLet\'s get you registered on HoneyBlockChain!\n\n*Step 1/7:* What is your full name?');
         await FSM.setState(waId, ConversationState.REGISTRATION_NAME, {});
         return;
 
@@ -76,8 +75,8 @@ export async function handleMessage(waId: string, message: any) {
 
       default:
         // If they type a number instead of using the list
-        if (text === '1') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_disease' } } }); return; }
-        if (text === '2') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_register' } } }); return; }
+        if (text === '1') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_register' } } }); return; }
+        if (text === '2') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_diagnostics' } } }); return; }
         if (text === '3') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_hive' } } }); return; }
         if (text === '4') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_batch' } } }); return; }
         if (text === '5') { await handleMessage(waId, { ...message, interactive: { list_reply: { id: 'menu_health' } } }); return; }
@@ -90,8 +89,8 @@ export async function handleMessage(waId: string, message: any) {
   }
 
   // Route to active flow
-  if (state.startsWith('DISEASE_')) {
-    await handleDiseaseDetection(waId, message, state, data);
+  if (state.startsWith('DIAGNOSTICS_')) {
+    await handleDiagnostics(waId, message, state, data);
   } else if (state.startsWith('REGISTRATION_')) {
     await handleRegistration(waId, message, state, data);
   } else if (state.startsWith('HIVE_') || state === ConversationState.HIVE_STATUS) {

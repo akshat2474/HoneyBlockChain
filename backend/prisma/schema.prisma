@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,74 +11,84 @@ datasource db {
 }
 
 model Beekeeper {
-  id             String   @id @default(uuid())
-  walletAddress  String?  @unique
-  name           String
-  phone          String   @unique
-  region         String
-  kvicId         String?  @unique
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  batches        HoneyBatch[]
-  whatsappUser   WhatsAppUser?
+  id              String         @id @default(uuid())
+  walletAddress   String?        @unique
+  name            String
+  phone           String         @unique
+  email           String?
+  region          String
+  kvicId          String?        @unique
+  
+  // New Capacity & Practice fields
+  beekeeperType   String?        // Stationary, Migratory, Queen Breeder
+  hivesCount      Int            @default(0)
+  yardsCount      Int            @default(0)
+  practices       String?        // e.g. Organic, Raw, Treatment-free
+
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  batches         HoneyBatch[]
+  whatsappUsers   WhatsAppUser[]
 }
 
 model HoneyBatch {
-  id              String   @id @default(uuid())
-  batchIdHash     String   @unique
+  id              String    @id @default(uuid())
+  batchIdHash     String    @unique // keccak256 hash
   beekeeperId     String
   quantityGrams   Int
-  honeyType       String?
-  region          String?
-  harvestDate     DateTime?
-  metadataCID     String?
-  txHash          String?
-  status          String   @default("Created")
-  labVerified     Boolean  @default(false)
-  labReportHash   String?
-  recalled        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  honeyType       String    // e.g. Multifloral, Litchi
+  
+  // Traceability fields
+  yardId          String?
+  hivesHarvested  Int?
+  harvestImgUrl   String?
+  
+  metadataCID     String?   // IPFS CID
+  txHash          String?   // Blockchain transaction hash
+  status          String    // e.g. 'Harvested', 'In Transit', 'Lab Verified'
+  labVerified     Boolean   @default(false)
+  currentCustodian String?  // ID or name of who holds it now
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
   beekeeper       Beekeeper @relation(fields: [beekeeperId], references: [id])
 }
 
 model WhatsAppUser {
-  id                String   @id @default(uuid())
-  waId              String   @unique
-  beekeeperId       String?  @unique
-  displayName       String?
-  language          String   @default("en")
-  conversationState String   @default("IDLE")
-  stateData         String   @default("{}")
-  registeredAt      DateTime @default(now())
-  lastActiveAt      DateTime @default(now())
+  id                String    @id @default(uuid())
+  waId              String    @unique // Phone number with country code
+  beekeeperId       String?
+  language          String    @default("en")
+  conversationState String    @default("IDLE")
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
   beekeeper         Beekeeper? @relation(fields: [beekeeperId], references: [id])
-  conversationLogs  ConversationLog[]
-  diseaseReports    DiseaseReport[]
+  diagnostics       DiagnosticReport[]
 }
 
 model ConversationLog {
-  id          String   @id @default(uuid())
-  waId        String
-  direction   String
-  messageType String
-  messageId   String   @unique
-  content     String?
-  metadata    String?
-  createdAt   DateTime @default(now())
-  whatsappUser WhatsAppUser @relation(fields: [waId], references: [waId])
+  id        String   @id @default(uuid())
+  waId      String
+  direction String   // 'INBOUND' or 'OUTBOUND'
+  message   String
+  type      String   // 'TEXT', 'IMAGE', 'AUDIO', 'INTERACTIVE'
+  timestamp DateTime @default(now())
 }
 
-model DiseaseReport {
+model DiagnosticReport {
   id              String   @id @default(uuid())
   waId            String
-  imageUrl        String?
-  detectionResult String?
-  confidence      Float?
-  severity        String?
-  recommendations String?
-  rawResponse     String?
+  type            String   // 'IMAGE' or 'AUDIO'
+  mediaUrl        String?
+  detectionResult String
+  confidence      Float
+  severity        String   // 'NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
   createdAt       DateTime @default(now())
-  whatsappUser    WhatsAppUser @relation(fields: [waId], references: [waId])
+
+  user            WhatsAppUser @relation(fields: [waId], references: [waId])
 }
