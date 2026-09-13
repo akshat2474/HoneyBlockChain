@@ -25,9 +25,12 @@ class ConversationState(str, Enum):
     HARVEST_VARIETAL = "HARVEST_VARIETAL"
     HARVEST_IMAGE = "HARVEST_IMAGE"
 
-    # Transfer
+    # Transfer Custody Flow
     TRANSFER_BATCH_ID = "TRANSFER_BATCH_ID"
     TRANSFER_BUYER_ID = "TRANSFER_BUYER_ID"
+
+    # Settings Flow
+    SETTINGS_CHOOSE_LANGUAGE = "SETTINGS_CHOOSE_LANGUAGE"
     TRANSFER_CONFIRM = "TRANSFER_CONFIRM"
 
     # Verify
