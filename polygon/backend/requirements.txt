@@ -11,3 +11,4 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
 paho-mqtt
+bcrypt<4.0.0
