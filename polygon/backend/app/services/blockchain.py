@@ -22,12 +22,7 @@ _CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS", "")
 w3 = Web3(Web3.HTTPProvider(_RPC_URL))
 account = Account.from_key(_PRIVATE_KEY) if _PRIVATE_KEY else None
 
-_ABI_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "../../../blockchain/artifacts/contracts/HoneyChain.sol/HoneyChain.json",
-    )
-)
+_ABI_PATH = os.path.join(os.path.dirname(__file__), "abi.json")
 
 contract = None
 try:
