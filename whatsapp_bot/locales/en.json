@@ -1,0 +1,28 @@
+{
+    "menu": {
+        "welcome": "👋 *Welcome to HoneyBlockChain!*\n\nI am your AI Beekeeper Assistant. Please tap the menu below to select an option:",
+        "button_text": "HoneyBlockChain Menu",
+        "opt_diag": "🤖 AI Diagnostics",
+        "desc_diag": "Check Hive Health (Image/Audio)",
+        "opt_reg": "📋 Register Profile",
+        "desc_reg": "Join as a Beekeeper",
+        "opt_harv": "🍯 Log Harvest",
+        "desc_harv": "Generate Harvest Voucher",
+        "opt_trans": "🚚 Transfer Custody",
+        "desc_trans": "Sell or transfer batch",
+        "opt_ver": "🔍 Verify Batch",
+        "desc_ver": "Trace batch on blockchain",
+        "opt_lang": "⚙️ Change Language",
+        "desc_lang": "English / हिन्दी"
+    },
+    "settings": {
+        "choose_lang": "🌐 Please select your preferred language:\nकृपया अपनी पसंदीदा भाषा चुनें:",
+        "lang_en": "English",
+        "lang_hi": "हिन्दी (Hindi)",
+        "lang_updated": "✅ Language has been successfully updated to English!"
+    },
+    "general": {
+        "coming_soon": "🚧 This feature is coming soon! Send *menu* to return.",
+        "cancelled": "❌ Action cancelled. Send *hi* to return to the menu."
+    }
+}
