@@ -1,142 +1,113 @@
-from whatsapp.fsm import redis_service
 from whatsapp.client import whatsapp_client
+from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
 from whatsapp.flows.main_menu import handle_main_menu
-from whatsapp.flows.diagnostics import handle_diagnostics
 from whatsapp.flows.registration import handle_registration
-from whatsapp.flows.settings import handle_settings
-from whatsapp.flows.harvest import handle_harvest
-from whatsapp.flows.transfer import handle_transfer
-from whatsapp.i18n import t
 from database import SessionLocal
 from models import WhatsAppUser
+from whatsapp.llm_service import analyze_incoming_text, analyze_incoming_audio
 
-async def handle_message(message: dict):
-    wa_id = message.get("from")
-    msg_id = message.get("id")
+def get_or_create_user(wa_id: str, default_lang: str = "en") -> WhatsAppUser:
+    db = SessionLocal()
+    user = db.query(WhatsAppUser).filter(WhatsAppUser.phone_number == wa_id).first()
+    if not user:
+        user = WhatsAppUser(phone_number=wa_id, language=default_lang)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    db.close()
+    return user
 
-    if not wa_id or not msg_id:
-        return
+def update_user_language(wa_id: str, new_lang: str):
+    db = SessionLocal()
+    user = db.query(WhatsAppUser).filter(WhatsAppUser.phone_number == wa_id).first()
+    if user and user.language != new_lang:
+        user.language = new_lang
+        db.commit()
+    db.close()
 
-    # 1. Deduplication
-    is_duplicate = await redis_service.is_duplicate_message(msg_id)
-    if is_duplicate:
-        print(f"♻️ Ignored duplicate webhook message: {msg_id}")
-        return
-
-    # 2. Spam Cooldown
-    is_spam = await redis_service.is_spamming(wa_id)
-    if is_spam:
-        print(f"⚠️ Ignored message due to spam cooldown: {wa_id}")
-        return
-
-    session = await redis_service.get_session(wa_id)
-    state = session.get("state")
-    data = session.get("data", {})
-
-    # 3. DB Lookup / Language Initialization
-    lang = data.get("language")
-    if not lang:
-        db = SessionLocal()
-        try:
-            user = db.query(WhatsAppUser).filter(WhatsAppUser.wa_id == wa_id).first()
-            if user and user.language:
-                lang = user.language
-                data["language"] = lang
-        finally:
-            db.close()
-    
-    await whatsapp_client.mark_as_read(msg_id)
-
-    # Extract text/interactive
+async def handle_message(wa_id: str, message: dict):
     msg_type = message.get("type")
-    text = ""
-    interactive_id = ""
+    original_text = message.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
+    interactive_id = message.get("interactive", {}).get("button_reply", {}).get("id", "")
+    
+    # 1. Translate incoming text/audio using LLM
+    lang = "en"
+    english_text = original_text
+    intent = "UNKNOWN"
+    
+    if msg_type == "text" and original_text:
+        analysis = analyze_incoming_text(original_text)
+        lang = analysis.detected_language
+        english_text = analysis.translated_english_text
+        intent = analysis.intent
+        print(f"🎤 [LLM TEXT IN] Lang: {lang} | Translated: {english_text} | Intent: {intent}")
+    elif msg_type == "audio":
+        media_id = message.get("audio", {}).get("id")
+        if media_id:
+            audio_bytes = await whatsapp_client.download_media(media_id)
+            analysis = analyze_incoming_audio(audio_bytes)
+            lang = analysis.detected_language
+            english_text = analysis.translated_english_text
+            intent = analysis.intent
+            print(f"🎤 [LLM AUDIO IN] Lang: {lang} | Translated: {english_text} | Intent: {intent}")
 
-    if msg_type == "text":
-        text = message.get("text", {}).get("body", "").lower().strip()
-    elif msg_type == "interactive":
-        interactive = message.get("interactive", {})
-        if interactive.get("type") == "list_reply":
-            interactive_id = interactive.get("list_reply", {}).get("id", "")
-        elif interactive.get("type") == "button_reply":
-            interactive_id = interactive.get("button_reply", {}).get("id", "")
+    # 2. State Management
+    state_data = await redis_service.get_session(wa_id)
+    state = state_data.get("state", ConversationState.IDLE)
+    data = state_data.get("data", {})
+    
+    # Save the english text into data so the flows don't have to re-translate
+    data["english_text"] = english_text
 
-    # Always go to menu if standard keywords are typed
-    if text in ["hi", "hello", "menu", "start", "0", "नमस्ते", "main menu"]:
-        if not lang:
-            # First time ever interacting -> Go to language settings
-            await handle_settings(wa_id, message, ConversationState.SETTINGS_CHOOSE_LANGUAGE, data)
+    # 3. Check Database for Registration Status
+    from models import Beekeeper
+    db = SessionLocal()
+    is_registered = db.query(Beekeeper).filter(Beekeeper.phone == wa_id).first() is not None
+    db.close()
+
+    user_meta = get_or_create_user(wa_id, lang)
+    if lang != "en" and lang != "UNKNOWN" and (msg_type == "text" or msg_type == "audio"):
+        update_user_language(wa_id, lang)
+    
+    current_lang = user_meta.language
+
+    # 4. Handle Global Intercepts (e.g. First-time registration or forced main menu)
+    if state in [ConversationState.IDLE, ConversationState.MAIN_MENU]:
+        if not is_registered:
+            # Force registration
+            if intent == "MAIN_MENU" or english_text.lower() in ["hi", "hello", "menu", "register"]:
+                await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, current_lang)
+                return
         else:
-            await handle_main_menu(wa_id, lang)
-        return
-
-    # Handle language setup flow exclusively if language isn't set
-    if not lang or state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
-        await handle_settings(wa_id, message, ConversationState.SETTINGS_CHOOSE_LANGUAGE, data)
-        return
-
-    # Handle menu selections
-    if state in [ConversationState.MAIN_MENU, ConversationState.IDLE]:
-        if interactive_id == "menu_diagnostics" or text == "1":
-            await handle_diagnostics(wa_id, message, ConversationState.DIAGNOSTICS_SELECT, data, lang)
-            return
-        elif interactive_id == "menu_register" or text == "2":
-            await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, lang)
-            return
-        elif interactive_id == "menu_harvest" or text == "3":
-            await handle_harvest(wa_id, message, ConversationState.HARVEST_YARD_ID, data, lang)
-            return
-        elif interactive_id == "menu_transfer" or text == "4":
-            await handle_transfer(wa_id, message, ConversationState.TRANSFER_BATCH_ID, data, lang)
-            return
-        elif interactive_id == "menu_verify" or text == "5":
-            await whatsapp_client.send_text(wa_id, t(lang, "general.coming_soon"))
-            return
-        elif interactive_id == "menu_settings":
-            await handle_settings(wa_id, message, ConversationState.SETTINGS_CHOOSE_LANGUAGE, data)
-            return
-        else:
-            # LLM Router Fallback for free-text
-            from whatsapp.llm_router import classify_intent
-            if text:
-                intent_res = classify_intent(text)
-                intent = intent_res.intent
-                print(f"🧠 LLM Classified Intent: {intent} (Lang: {intent_res.detected_language})")
+            if intent == "MAIN_MENU" or english_text.lower() in ["hi", "hello", "menu"]:
+                await handle_main_menu(wa_id, current_lang)
+                return
                 
-                if intent == "DIAGNOSTICS":
-                    await handle_diagnostics(wa_id, message, ConversationState.DIAGNOSTICS_SELECT, data, lang)
-                    return
-                elif intent == "REGISTRATION":
-                    await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, lang)
-                    return
-                elif intent == "CHANGE_LANGUAGE":
-                    await handle_settings(wa_id, message, ConversationState.SETTINGS_CHOOSE_LANGUAGE, data)
-                    return
-                elif intent == "HARVEST":
-                    await handle_harvest(wa_id, message, ConversationState.HARVEST_YARD_ID, data, lang)
-                    return
-                elif intent == "TRANSFER":
-                    await handle_transfer(wa_id, message, ConversationState.TRANSFER_BATCH_ID, data, lang)
-                    return
-                elif intent == "VERIFY":
-                    await whatsapp_client.send_text(wa_id, t(lang, "general.coming_soon"))
-                    return
-                    
-            # Default fallback
-            await handle_main_menu(wa_id, lang)
-            return
+            if interactive_id == "menu_hive_status" or intent == "HIVE_STATUS" or "status" in english_text.lower():
+                # Mock IoT response
+                iot_reply = "🍯 *IoT Hive Status*\n\n✅ Hive 1: Healthy (35°C, 45% Humidity)\n✅ Hive 2: Healthy (34°C, 46% Humidity)\n\nEverything looks good!"
+                await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
+                return
+                
+            if interactive_id == "menu_ask_doubt" or intent == "ASK_DOUBT" or "doubt" in english_text.lower() or "question" in english_text.lower():
+                from whatsapp.llm_service import client
+                if client:
+                    ans = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=f"You are a helpful beekeeping assistant. Answer this farmer's doubt clearly and concisely in english: {english_text}"
+                    )
+                    await whatsapp_client.send_text(wa_id, f"🤖 *AI Assistant:*\n{ans.text}", current_lang)
+                else:
+                    await whatsapp_client.send_text(wa_id, "Sorry, AI assistant is unavailable.", current_lang)
+                return
 
-    # Route to active flow
-    if state.startswith("DIAGNOSTICS_"):
-        await handle_diagnostics(wa_id, message, state, data, lang)
-    elif state.startswith("REGISTRATION_"):
-        await handle_registration(wa_id, message, state, data, lang)
-    elif state.startswith("HARVEST_"):
-        await handle_harvest(wa_id, message, state, data, lang)
-    elif state.startswith("TRANSFER_"):
-        await handle_transfer(wa_id, message, state, data, lang)
-    elif state.startswith("SETTINGS_"):
-        await handle_settings(wa_id, message, state, data)
+    # 5. Route to active flow (FSM)
+    if state.startswith("REGISTRATION_"):
+        await handle_registration(wa_id, message, state, data, current_lang)
     else:
-        await handle_main_menu(wa_id, lang)
+        # Default fallback
+        if not is_registered:
+            await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, current_lang)
+        else:
+            await handle_main_menu(wa_id, current_lang)

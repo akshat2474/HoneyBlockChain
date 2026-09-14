@@ -3,41 +3,44 @@ from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
 from database import SessionLocal
 from models import Beekeeper
-from whatsapp.i18n import t
 
 async def handle_registration(wa_id: str, message: dict, state: str, data: dict, lang: str = "en"):
-    msg_type = message.get("type")
-    text = message.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
-
+    # We use data.get("english_text") because the LLM already translated the input
+    text = data.get("english_text", "").strip()
+    
     if text.lower() == "cancel":
         await redis_service.delete_session(wa_id)
-        await whatsapp_client.send_text(wa_id, t(lang, "general.cancelled"))
+        await whatsapp_client.send_text(wa_id, "❌ Registration cancelled. Send 'hi' to return to the menu.", lang)
         return
 
     if state == ConversationState.REGISTRATION_NAME:
-        if len(text) < 3:
-            await whatsapp_client.send_text(wa_id, t(lang, "reg.err_name"))
+        if len(text) < 2:
+            await whatsapp_client.send_text(wa_id, "⚠️ Name seems too short. Please enter your full name:", lang)
             return
         
         data["name"] = text
         data["phone"] = wa_id
         
-        await whatsapp_client.send_text(wa_id, t(lang, "reg.step2").format(name=text, phone=wa_id))
+        reply = f"Nice to meet you, {text}!\n\n*(I have securely registered your phone number as +{wa_id})*\n\n*Step 2/5:* Which State/Region is your primary apiary located in? (e.g., Punjab, Tamil Nadu)"
+        await whatsapp_client.send_text(wa_id, reply, lang)
         await redis_service.set_session(wa_id, ConversationState.REGISTRATION_REGION, data)
         return
 
     if state == ConversationState.REGISTRATION_REGION:
         data["region"] = text
-        await whatsapp_client.send_text(wa_id, t(lang, "reg.step3"))
+        await whatsapp_client.send_text(wa_id, "*Step 3/5:* How many beehives do you currently manage? (Enter a number)", lang)
         await redis_service.set_session(wa_id, ConversationState.REGISTRATION_CAPACITY, data)
         return
 
     if state == ConversationState.REGISTRATION_CAPACITY:
-        if not text.isdigit():
-            await whatsapp_client.send_text(wa_id, t(lang, "general.invalid_number"))
+        # We can extract digits if LLM translation left extra words
+        digits = ''.join(filter(str.isdigit, text))
+        if not digits:
+            await whatsapp_client.send_text(wa_id, "⚠️ Please enter a valid number.", lang)
             return
-        data["hives"] = int(text)
-        await whatsapp_client.send_text(wa_id, t(lang, "reg.step4"))
+            
+        data["hives"] = int(digits)
+        await whatsapp_client.send_text(wa_id, "*Step 4/5:* Do you use any premium practices? (e.g., Organic, Raw, Treatment-free, or None)", lang)
         await redis_service.set_session(wa_id, ConversationState.REGISTRATION_PRACTICES, data)
         return
 
@@ -63,13 +66,17 @@ async def handle_registration(wa_id: str, message: dict, state: str, data: dict,
             db.close()
 
         # Reply
-        reply = t(lang, "reg.success").format(
-            name=data["name"],
-            phone=data["phone"],
-            region=data["region"],
-            hives=data["hives"],
-            practices=data["practices"]
+        reply = (
+            f"✅ *Registration Complete!*\n\n"
+            f"👤 Name: {data['name']}\n"
+            f"📞 Phone: {data['phone']}\n"
+            f"📍 Region: {data['region']}\n"
+            f"🐝 Hives: {data['hives']}\n"
+            f"🌿 Practices: {data['practices']}\n\n"
+            f"Your profile has been saved. Send 'menu' to return."
         )
-        await whatsapp_client.send_text(wa_id, reply)
-        await redis_service.set_session(wa_id, ConversationState.IDLE, data)
+        await whatsapp_client.send_text(wa_id, reply, lang)
+        
+        from .main_menu import handle_main_menu
+        await handle_main_menu(wa_id, lang)
         return
