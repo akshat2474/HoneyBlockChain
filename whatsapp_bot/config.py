@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     WHATSAPP_API_VERSION: str = "v25.0"
     REDIS_URL: str = "redis://localhost:6379"
     DATABASE_URL: str = "sqlite:///./honeychain.db"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

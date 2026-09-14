@@ -37,7 +37,7 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model=settings.GEMINI_MODEL,
             contents=prompt,
             config={
                 'response_mime_type': 'application/json',
@@ -75,7 +75,7 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
         from google.genai import types
         audio_part = types.Part.from_bytes(data=audio_bytes, mime_type='audio/ogg')
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model=settings.GEMINI_MODEL,
             contents=[prompt, audio_part],
             config={
                 'response_mime_type': 'application/json',
@@ -105,7 +105,7 @@ def translate_outgoing_text(english_text: str, target_language: str) -> str:
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model=settings.GEMINI_MODEL,
             contents=prompt,
             config={'temperature': 0.1}
         )
