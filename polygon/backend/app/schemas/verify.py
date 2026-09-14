@@ -35,3 +35,4 @@ class VerifyResponse(BaseModel):
     ipfs: IpfsProof
     scan_count: int
     duplicate_warning: bool
+    mismatches: Optional[list[str]] = None

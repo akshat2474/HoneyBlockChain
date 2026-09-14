@@ -125,6 +125,16 @@ def verify_batch(
     if batch.harvest and batch.harvest.hive and batch.harvest.hive.beekeeper:
         bk_actor = batch.harvest.hive.beekeeper.actor
 
+    mismatches = []
+    if on_chain:
+        _STATUS_INDEX = {s: i for i, s in enumerate(BatchStatus)}
+        if on_chain.get("status") != _STATUS_INDEX.get(batch.status, on_chain.get("status")):
+            mismatches.append("status")
+        if on_chain.get("recalled") != (batch.status == BatchStatus.RECALLED):
+            mismatches.append("recalled")
+        if bk_actor and bk_actor.wallet_address and on_chain.get("beekeeper") and on_chain.get("beekeeper").lower() != bk_actor.wallet_address.lower():
+            mismatches.append("beekeeper")
+
     return VerifyResponse(
         batch_code=batch_code,
         status="RECALLED" if is_recalled else batch.status.value,
@@ -137,4 +147,5 @@ def verify_batch(
         ipfs=_build_ipfs_proof(batch, on_chain),
         scan_count=token.scan_count,
         duplicate_warning=duplicate_warning,
+        mismatches=mismatches if mismatches else None
     )

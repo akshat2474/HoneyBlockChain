@@ -6,7 +6,7 @@ import os
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_actor, require_role
@@ -190,28 +190,35 @@ def get_batch_by_code(
 # ============================================================
 
 @router.post("/lab-verification", response_model=LabVerifyResponse, status_code=status.HTTP_201_CREATED)
-def lab_verification(
-    req: LabVerifyRequest,
+async def lab_verification(
+    batch_id: uuid.UUID = Form(...),
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     actor: Actor = Depends(require_role(ActorRole.LAB)),
 ):
     """
-    Record a lab certificate hash on-chain.
-    The certificate_hash must be a 0x-prefixed hex SHA-256 of the PDF.
+    Upload a lab certificate, hash it, pin to IPFS, and record on-chain.
     """
-    batch = db.query(Batch).filter(Batch.id == req.batch_id).first()
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
 
-    metadata = {"labVerification": True, "certificateHash": req.certificate_hash, "cid": req.certificate_cid}
+    file_bytes = await file.read()
+    
+    try:
+        certificate_cid, file_hash_hex = ipfs.upload_file(file_bytes, file.filename)
+        certificate_hash_0x = "0x" + file_hash_hex
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"IPFS pinning failed: {exc}")
+
+    metadata = {"labVerification": True, "certificateHash": certificate_hash_0x, "cid": certificate_cid}
     metadata_str = json.dumps(metadata, sort_keys=True)
 
     try:
-        cid = req.certificate_cid or batch.metadata_cid
         tx_hash = blockchain.verify_lab_tx(
             batch_code=batch.batch_code,
-            lab_report_hash_hex=req.certificate_hash,
-            metadata_cid=cid,
+            lab_report_hash_hex=certificate_hash_0x,
+            metadata_cid=certificate_cid,
             metadata_json_str=metadata_str,
         )
     except Exception as exc:
@@ -220,8 +227,8 @@ def lab_verification(
     cert = Certificate(
         batch_id=batch.id,
         lab_actor_id=actor.id,
-        certificate_hash=req.certificate_hash,
-        cid=req.certificate_cid,
+        certificate_hash=certificate_hash_0x,
+        cid=certificate_cid,
         tx_hash=tx_hash,
     )
     db.add(cert)
