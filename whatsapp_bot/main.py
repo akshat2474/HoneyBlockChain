@@ -5,6 +5,11 @@ import hashlib
 import json
 from config import settings
 from whatsapp.handler import handle_message
+from database import engine, Base
+import models
+
+# Create database tables if they don't exist
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="HoneyChain WhatsApp Bot (Python)")
 
