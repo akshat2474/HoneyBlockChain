@@ -48,7 +48,9 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
                 value = change.get("value", {})
                 messages = value.get("messages", [])
                 for message in messages:
-                    # Run handler in background so Meta gets 200 OK instantly
-                    background_tasks.add_task(handle_message, message)
+                    wa_id = message.get("from")
+                    if wa_id:
+                        # Run handler in background so Meta gets 200 OK instantly
+                        background_tasks.add_task(handle_message, wa_id, message)
                     
     return JSONResponse({"status": "ok"})
