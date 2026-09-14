@@ -105,7 +105,7 @@ async def handle_message(wa_id: str, message: dict):
                 from whatsapp.llm_service import client
                 if client:
                     ans = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.6-flash',
                         contents=f"You are a helpful beekeeping assistant. Answer this farmer's doubt clearly and concisely in english: {english_text}"
                     )
                     await whatsapp_client.send_text(wa_id, f"🤖 *AI Assistant:*\n{ans.text}", current_lang)
