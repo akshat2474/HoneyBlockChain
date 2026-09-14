@@ -9,22 +9,26 @@ from whatsapp.llm_service import analyze_incoming_text, analyze_incoming_audio
 
 def get_or_create_user(wa_id: str, default_lang: str = "en") -> WhatsAppUser:
     db = SessionLocal()
-    user = db.query(WhatsAppUser).filter(WhatsAppUser.phone_number == wa_id).first()
-    if not user:
-        user = WhatsAppUser(phone_number=wa_id, language=default_lang)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    db.close()
-    return user
+    try:
+        user = db.query(WhatsAppUser).filter(WhatsAppUser.wa_id == wa_id).first()
+        if not user:
+            user = WhatsAppUser(wa_id=wa_id, language=default_lang)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return user
+    finally:
+        db.close()
 
 def update_user_language(wa_id: str, new_lang: str):
     db = SessionLocal()
-    user = db.query(WhatsAppUser).filter(WhatsAppUser.phone_number == wa_id).first()
-    if user and user.language != new_lang:
-        user.language = new_lang
-        db.commit()
-    db.close()
+    try:
+        user = db.query(WhatsAppUser).filter(WhatsAppUser.wa_id == wa_id).first()
+        if user and user.language != new_lang:
+            user.language = new_lang
+            db.commit()
+    finally:
+        db.close()
 
 async def handle_message(wa_id: str, message: dict):
     msg_type = message.get("type")
@@ -63,8 +67,10 @@ async def handle_message(wa_id: str, message: dict):
     # 3. Check Database for Registration Status
     from models import Beekeeper
     db = SessionLocal()
-    is_registered = db.query(Beekeeper).filter(Beekeeper.phone == wa_id).first() is not None
-    db.close()
+    try:
+        is_registered = db.query(Beekeeper).filter(Beekeeper.phone == wa_id).first() is not None
+    finally:
+        db.close()
 
     user_meta = get_or_create_user(wa_id, lang)
     if lang != "en" and lang != "UNKNOWN" and (msg_type == "text" or msg_type == "audio"):
