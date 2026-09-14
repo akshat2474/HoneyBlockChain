@@ -32,8 +32,13 @@ def update_user_language(wa_id: str, new_lang: str):
 
 async def handle_message(wa_id: str, message: dict):
     msg_type = message.get("type")
+    msg_id = message.get("id")
     original_text = message.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
     interactive_id = message.get("interactive", {}).get("button_reply", {}).get("id", "")
+    
+    # Mark message as read (blue ticks)
+    if msg_id:
+        await whatsapp_client.mark_as_read(msg_id)
     
     # 1. Translate incoming text/audio using LLM
     lang = "en"
