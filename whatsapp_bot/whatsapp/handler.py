@@ -270,10 +270,21 @@ async def handle_message(wa_id: str, message: dict):
             )
             return
 
+        # If user types "hi" or "menu" again, resend the welcome menu
+        if intent in ("MAIN_MENU", "REGISTRATION") or english_text.lower() in ("hi", "hello", "menu", "start"):
+            buttons = [
+                {"type": "reply", "reply": {"id": "onboard_register", "title": "Register Now"}},
+                {"type": "reply", "reply": {"id": "onboard_info", "title": "About App"}},
+                {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
+            ]
+            welcome_text = "👋 Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
+            await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
+            return
+
         # If user types something else while in ONBOARDING
         await whatsapp_client.send_text(
             wa_id,
-            "Please select an option from the menu above to get started.",
+            "Please select an option from the menu above to get started. (Send 'hi' to see the menu again)",
             current_lang
         )
         return
