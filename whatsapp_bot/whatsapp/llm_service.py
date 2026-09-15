@@ -26,17 +26,47 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
 
     1. Translate the message into English.
     2. Detect the original language (e.g., 'hi' for Hindi/Hinglish, 'en' for English, 'bn' for Bengali, 'te' for Telugu).
-    3. Categorize the INTENT into one of the following:
-       - REGISTRATION (User wants to register or join)
-       - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
-       - HIVE_STATUS (User wants to check the IoT sensor status of their hive or box)
-       - HEALTH_CHECK (User wants to check bee health, diseases, queen status, or hive condition)
-       - HARVEST_MARKET (User wants to register a harvest, says they want to harvest honey, check honey prices, or view government subsidies)
-       - MAIN_MENU (User is saying hi, hello, or asking for the menu)
-       - CHANGE_LANGUAGE (User wants to change the bot's language, OR user just typed the name of a language like "Telugu", "Marathi", "Tamil")
-       - TRANSFER (User wants to transfer custody of a batch to someone else)
-       - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
-       - UNKNOWN (Does not fit any category)
+    3. Categorize the INTENT into exactly one of the following (read examples carefully):
+
+       - REGISTRATION
+         User wants to sign up, join, or register.
+         Examples: "I want to register", "sign me up", "mujhe register karna hai", "join karna hai"
+
+       - HIVE_STATUS
+         User wants to see IoT sensor readings — temperature, humidity, weight from the smart device.
+         Examples: "show hive status", "box condition kya hai", "sensor data dikhao", "mere chhatte ka temperature kya hai"
+
+       - HEALTH_CHECK
+         User wants to know about bee health, diseases, queen bee, or physical hive condition (NOT sensors).
+         Examples: "meri makkhiyan theek hain?", "queen bee kahan hai", "koi bimari to nahi", "check bee health", "hive condition"
+
+       - HARVEST_MARKET
+         User wants to record/register a harvest, knows they have honey ready, asks about honey prices, subsidies, or schemes.
+         Examples: "I want to harvest", "mera shahad tayyar hai", "honey register karna hai", "shahad ki kimat kya hai", "subsidy milegi kya", "new batch add karna hai"
+
+       - TRANSFER
+         User wants to hand over a batch to a buyer or another person.
+         Examples: "batch transfer karna hai", "buyer ko dena hai", "transfer custody", "BATCH-123 transfer karo"
+
+       - VERIFY_BATCH
+         User wants to look up or verify a batch ID on the blockchain.
+         Examples: "batch verify karo", "BATCH-ABC123 ka status kya hai", "check batch", "blockchain pe dekho"
+
+       - CHANGE_LANGUAGE
+         User wants to switch the bot language, OR just types a language name alone.
+         Examples: "Hindi mein baat karo", "change language to Telugu", "Marathi", "speak in English"
+
+       - MAIN_MENU
+         User says hi, hello, wants to go back to menu, or asks what the bot can do.
+         Examples: "hi", "hello", "menu", "main menu", "back", "start", "kya kar sakte ho"
+
+       - ASK_DOUBT
+         User has a general knowledge question about beekeeping, honey, or the HoneyChain app that doesn't fit above.
+         Examples: "best season for harvesting?", "varroa mite kya hota hai", "how does blockchain work", "app ke baare mein batao"
+
+       - UNKNOWN
+         Does not fit any category above.
+
     4. If the user explicitly asks to speak in a specific language (e.g. "Talk to me in Telugu", "Hindi please", or just "Marathi"), set `requested_language_code` to the 2-letter ISO 639-1 code for that language (e.g. 'te' for Telugu, 'mr' for Marathi, 'ta' for Tamil, 'hi' for Hindi). Otherwise, leave it empty.
 
     User message: "{text}"
@@ -75,18 +105,48 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
 
     1. Transcribe the audio and translate the message into English.
     2. Detect the original language (e.g., 'hi' for Hindi/Hinglish, 'en' for English, 'bn' for Bengali, 'te' for Telugu).
-    3. Categorize the INTENT into one of the following:
-       - REGISTRATION (User wants to register or join)
-       - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
-       - HIVE_STATUS (User wants to check the IoT sensor status of their hive or box)
-       - HEALTH_CHECK (User wants to check bee health, diseases, queen status, or hive condition)
-       - HARVEST_MARKET (User wants to register a harvest, says they want to harvest honey, check honey prices, or view government subsidies)
-       - MAIN_MENU (User is saying hi, hello, or asking for the menu)
-       - CHANGE_LANGUAGE (User wants to change the bot's language, OR user just typed the name of a language like "Telugu", "Marathi", "Tamil")
-       - TRANSFER (User wants to transfer custody of a batch to someone else)
-       - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
-       - UNKNOWN (Does not fit any category)
-    4. If the user explicitly asks to speak in a specific language, set `requested_language_code` to the 2-letter ISO 639-1 code for that language (e.g. 'te' for Telugu, 'mr' for Marathi, 'ta' for Tamil). Otherwise, leave it empty.
+    3. Categorize the INTENT into exactly one of the following (read examples carefully):
+
+       - REGISTRATION
+         User wants to sign up, join, or register.
+         Examples: "I want to register", "mujhe register karna hai", "join karna hai"
+
+       - HIVE_STATUS
+         User wants to see IoT sensor readings — temperature, humidity, weight from the smart device.
+         Examples: "show hive status", "box condition kya hai", "sensor data dikhao", "mere chhatte ka temperature kya hai"
+
+       - HEALTH_CHECK
+         User wants to know about bee health, diseases, queen bee, or physical hive condition (NOT sensors).
+         Examples: "meri makkhiyan theek hain?", "queen bee kahan hai", "koi bimari to nahi", "check bee health"
+
+       - HARVEST_MARKET
+         User wants to record/register a harvest, knows they have honey ready, asks about honey prices, subsidies, or schemes.
+         Examples: "I want to harvest", "mera shahad tayyar hai", "honey register karna hai", "shahad ki kimat kya hai", "subsidy milegi kya"
+
+       - TRANSFER
+         User wants to hand over a batch to a buyer or another person.
+         Examples: "batch transfer karna hai", "buyer ko dena hai", "transfer custody", "BATCH-123 transfer karo"
+
+       - VERIFY_BATCH
+         User wants to look up or verify a batch ID on the blockchain.
+         Examples: "batch verify karo", "BATCH-ABC123 ka status kya hai", "check batch"
+
+       - CHANGE_LANGUAGE
+         User wants to switch the bot language, OR just says a language name.
+         Examples: "Hindi mein baat karo", "change language to Telugu", "Marathi mein bolna hai"
+
+       - MAIN_MENU
+         User says hi, hello, wants to go back to menu, or asks what the bot can do.
+         Examples: "hi", "hello", "menu dikhao", "back", "kya kar sakte ho"
+
+       - ASK_DOUBT
+         User has a general knowledge question about beekeeping, honey, or the HoneyChain app that doesn't fit above.
+         Examples: "best season for harvesting?", "varroa mite kya hota hai", "how does blockchain work"
+
+       - UNKNOWN
+         Does not fit any category above.
+
+    4. If the user explicitly asks to speak in a specific language, set `requested_language_code` to the 2-letter ISO 639-1 code (e.g. 'te' for Telugu, 'mr' for Marathi, 'hi' for Hindi). Otherwise, leave it empty.
     """
     
     try:
