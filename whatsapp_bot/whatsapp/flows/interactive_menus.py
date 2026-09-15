@@ -34,9 +34,9 @@ async def handle_interactive_menus(
         if interactive_id == "menu_box_condition":
             iot_reply = (
                 "Honey Box / IoT Status\n\n"
-                "Hive 1: Healthy (35 C, 45%% Humidity)\n"
+                "Hive 1: Healthy (35 C, 45% Humidity)\n"
                 "Hive 2: Warning - High Temperature (38 C)\n"
-                "Hive 3: Healthy (34 C, 47%% Humidity)\n\n"
+                "Hive 3: Healthy (34 C, 47% Humidity)\n\n"
                 "Tip: High temp in Hive 2 may indicate swarming. Inspect soon!"
             )
             buttons = [{"type": "reply", "reply": {"id": "btn_back", "title": "Back to Menu"}}]
@@ -59,7 +59,8 @@ async def handle_interactive_menus(
             buttons = [
                 {"type": "reply", "reply": {"id": "market_subsidy",  "title": "Govt Subsidies"}},
                 {"type": "reply", "reply": {"id": "market_prices",   "title": "Honey Prices"}},
-                {"type": "reply", "reply": {"id": "market_register", "title": "Register Harvest"}},
+                {"type": "reply", "reply": {"id": "market_register", "title": "Quick Register"}},
+                {"type": "reply", "reply": {"id": "market_full_harvest", "title": "Professional Harvest"}},
             ]
             await whatsapp_client.send_buttons(
                 wa_id, "What are you looking for?", buttons, lang
@@ -112,7 +113,7 @@ async def handle_interactive_menus(
     if state == ConversationState.MENU_MARKET:
         if interactive_id == "market_subsidy":
             reply = (
-                "KVIC provides an 80%% subsidy for 10 bee boxes under the "
+                "KVIC provides an 80% subsidy for 10 bee boxes under the "
                 "National Honey Mission. Visit www.kviconline.gov.in or "
                 "contact your local KVK to apply."
             )
@@ -140,6 +141,12 @@ async def handle_interactive_menus(
             )
             await whatsapp_client.send_text(wa_id, reply, lang)
             await redis_service.set_session(wa_id, ConversationState.HARVEST_HIVE_NUM, data)
+            return
+
+        elif interactive_id == "market_full_harvest":
+            reply = "Let's start a professional harvest registration.\n\nWhich Yard ID are you harvesting from? (e.g., YARD-001)"
+            await whatsapp_client.send_text(wa_id, reply, lang)
+            await redis_service.set_session(wa_id, ConversationState.HARVEST_YARD_ID, data)
             return
 
         else:

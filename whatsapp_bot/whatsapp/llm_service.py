@@ -6,7 +6,7 @@ from config import settings
 class IncomingAnalysis(BaseModel):
     translated_english_text: str
     detected_language: str
-    intent: str  # REGISTRATION, HEALTH_CHECK, BOX_CONDITION, MAIN_MENU, CHANGE_LANGUAGE, ASK_DOUBT, HIVE_STATUS, UNKNOWN
+    intent: str  # REGISTRATION, HEALTH_CHECK, BOX_CONDITION, MAIN_MENU, CHANGE_LANGUAGE, ASK_DOUBT, HIVE_STATUS, TRANSFER, VERIFY_BATCH, UNKNOWN
 
 # Load Gemini API Key
 api_key = getattr(settings, "GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
@@ -31,6 +31,8 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
        - HIVE_STATUS (User wants to check the IoT status of their hive or box condition)
        - MAIN_MENU (User is saying hi, hello, or asking for the menu)
        - CHANGE_LANGUAGE (User wants to change the bot's language or is asking about language settings)
+       - TRANSFER (User wants to transfer custody of a batch to someone else)
+       - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
        - UNKNOWN (Does not fit any category)
 
     User message: "{text}"
@@ -75,6 +77,8 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
        - HIVE_STATUS (User wants to check the IoT status of their hive or box condition)
        - MAIN_MENU (User is saying hi, hello, or asking for the menu)
        - CHANGE_LANGUAGE (User wants to change the bot's language or is asking about language settings)
+       - TRANSFER (User wants to transfer custody of a batch to someone else)
+       - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
        - UNKNOWN (Does not fit any category)
     """
     

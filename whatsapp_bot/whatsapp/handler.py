@@ -170,6 +170,24 @@ async def handle_message(wa_id: str, message: dict):
             return
 
         if (
+            interactive_id == "menu_transfer"
+            or intent == "TRANSFER"
+            or "transfer" in english_text.lower()
+        ):
+            await whatsapp_client.send_text(wa_id, "Please enter the Batch ID you wish to transfer (e.g., BATCH-123):", current_lang)
+            await redis_service.set_session(wa_id, ConversationState.TRANSFER_BATCH_ID, data)
+            return
+
+        if (
+            interactive_id == "menu_batch_status"
+            or intent == "VERIFY_BATCH"
+            or "batch status" in english_text.lower()
+        ):
+            await whatsapp_client.send_text(wa_id, "Please enter the Batch ID you wish to verify (e.g., BATCH-123):", current_lang)
+            await redis_service.set_session(wa_id, ConversationState.BATCH_STATUS_AWAITING_ID, data)
+            return
+
+        if (
             interactive_id == "menu_iot_status"
             or intent == "HIVE_STATUS"
             or "status" in english_text.lower()

@@ -6,7 +6,10 @@ from models import WhatsAppUser
 
 async def handle_settings(wa_id: str, message: dict, state: str, data: dict, lang: str = "en"):
     msg_type = message.get("type")
-    interactive_id = message.get("interactive", {}).get("button_reply", {}).get("id", "")
+    interactive_id = (
+        message.get("interactive", {}).get("button_reply", {}).get("id", "")
+        or message.get("interactive", {}).get("list_reply", {}).get("id", "")
+    )
     text = message.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
 
     if text.lower() == "cancel":
@@ -24,7 +27,12 @@ async def handle_settings(wa_id: str, message: dict, state: str, data: dict, lan
         elif text:
             # Basic mapping for text input
             mapping = {"english": "en", "hindi": "hi", "hinglish": "hi", "bengali": "bn", "bangla": "bn"}
-            selected_lang = mapping.get(text.lower(), "en")
+            text_lower = text.lower()
+            if text_lower in mapping:
+                selected_lang = mapping[text_lower]
+            else:
+                await whatsapp_client.send_text(wa_id, "❌ Invalid language. Please choose from English, Hindi, or Bengali.", lang)
+                return
 
         # Update User in DB
         db = SessionLocal()

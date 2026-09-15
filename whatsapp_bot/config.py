@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     WHATSAPP_ACCESS_TOKEN: str
     WHATSAPP_VERIFY_TOKEN: str
     WHATSAPP_APP_SECRET: str
+    GEMINI_API_KEY: str
     WHATSAPP_API_VERSION: str = "v25.0"
     REDIS_URL: str = "redis://localhost:6379"
     DATABASE_URL: str = "sqlite:///./honeychain.db"
