@@ -110,15 +110,15 @@ def translate_outgoing_text(english_text: str, target_language: str) -> str:
     """
     if not client or target_language == "en":
         return english_text
-        
+
     prompt = f"""
     Translate the following English message for a Beekeeper into the language code '{target_language}'.
     Ensure the translation is natural and polite. Do not add any extra commentary, just return the translated text.
-    
+
     English message:
     {english_text}
     """
-    
+
     try:
         response = client.models.generate_content(
             model=settings.GEMINI_MODEL,
@@ -129,3 +129,55 @@ def translate_outgoing_text(english_text: str, target_language: str) -> str:
     except Exception as e:
         print(f"LLM Outgoing Translation Error: {e}")
         return english_text
+
+async def generate_onboarding_response(user_text: str, lang: str = "en") -> tuple[str, bool]:
+    """
+    Generates a friendly introduction to HoneyChain and the Pollinator App.
+    Returns (response_text, should_start_registration).
+    """
+    if not client:
+        return "Welcome to HoneyChain! We help beekeepers track their honey and get fair prices. Would you like to register?", True
+
+    project_context = """
+    You are the welcoming ambassador for 'HoneyChain' and the 'Pollinator App'.
+
+    Project Context:
+    - HoneyChain is a blockchain-based ecosystem for the honey industry.
+    - The Pollinator App is the mobile interface for farmers/beekeepers.
+    - Goal: To bring transparency to the honey supply chain, eliminate middlemen, and ensure beekeepers get fair prices for their quality honey.
+    - Features: IoT hive monitoring, blockchain-verified harvest batches, direct market access, and honey quality verification.
+    - Tone: Professional, empathetic, and encouraging. You are talking to farmers who may not be tech-savvy.
+    """
+
+    prompt = f"""
+    {project_context}
+
+    The user has just sent a message: "{user_text}"
+
+    Task:
+    1. If the user is saying 'hi' or 'hello', give a warm, 2-sentence introduction to HoneyChain and the Pollinator App. Explain how it helps them get better prices and transparency.
+    2. If the user is asking a question, answer it briefly using the project context and guide them toward registration.
+    3. If the user seems ready to join, register, or says 'yes', signal that registration should start.
+
+    Response format (JSON):
+    {{
+        "response": "Your friendly response in English",
+        "ready_to_register": true/false
+    }}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config={
+                'response_mime_type': 'application/json',
+                'temperature': 0.7
+            },
+        )
+        import json
+        res_data = json.loads(response.text)
+        return res_data.get("response", ""), res_data.get("ready_to_register", False)
+    except Exception as e:
+        print(f"Onboarding LLM Error: {e}")
+        return "Welcome to HoneyChain! We're bringing blockchain transparency to beekeeping. Ready to register?", True

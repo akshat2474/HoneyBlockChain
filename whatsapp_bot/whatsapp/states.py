@@ -2,8 +2,10 @@ from enum import Enum
 
 class ConversationState(str, Enum):
     IDLE = "IDLE"
+    ONBOARDING = "ONBOARDING"
     MAIN_MENU = "MAIN_MENU"
     MENU_HEALTH = "MENU_HEALTH"
+
     MENU_MARKET = "MENU_MARKET"
     HARVEST_HIVE_NUM = "HARVEST_HIVE_NUM"
     HARVEST_WEIGHT = "HARVEST_WEIGHT"

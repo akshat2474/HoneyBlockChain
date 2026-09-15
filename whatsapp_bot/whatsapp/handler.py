@@ -134,15 +134,22 @@ async def handle_message(wa_id: str, message: dict):
             greeting_intents  = ("MAIN_MENU", "REGISTRATION")
             greeting_keywords = ("hi", "hello", "menu", "register", "start")
             if intent in greeting_intents or english_text.lower() in greeting_keywords:
-                # Bug fix #5: do NOT consume the greeting as a name.
-                # Just prompt and set state; the NEXT message will be the name.
-                await whatsapp_client.send_text(
-                    wa_id,
-                    "Welcome to *HoneyChain*! Let's get you registered.\n\n"
-                    "*Step 1/4:* What is your full name?",
-                    current_lang,
-                )
-                await redis_service.set_session(wa_id, ConversationState.REGISTRATION_NAME, {})
+                # Move to ONBOARDING instead of jumping straight to registration
+                from whatsapp.llm_service import generate_onboarding_response
+                response_text, ready = await generate_onboarding_response(english_text, current_lang)
+
+                await whatsapp_client.send_text(wa_id, response_text, current_lang)
+
+                if ready:
+                    await whatsapp_client.send_text(
+                        wa_id,
+                        "Let's get you registered!\n\n*Step 1/4:* What is your full name?",
+                        current_lang
+                    )
+                    await redis_service.set_session(wa_id, ConversationState.REGISTRATION_NAME, {})
+                else:
+                    await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
+                return
             else:
                 # Bug fix #3: unregistered user free-text was silently dropped
                 await whatsapp_client.send_text(
@@ -244,6 +251,22 @@ async def handle_message(wa_id: str, message: dict):
         return
 
     # ── 7. FSM routing ────────────────────────────────────────────────────────
+
+    if state == ConversationState.ONBOARDING:
+        from whatsapp.llm_service import generate_onboarding_response
+        response_text, ready = await generate_onboarding_response(english_text, current_lang)
+        await whatsapp_client.send_text(wa_id, response_text, current_lang)
+
+        if ready:
+            await whatsapp_client.send_text(
+                wa_id,
+                "Let's get you registered!\n\n*Step 1/4:* What is your full name?",
+                current_lang
+            )
+            await redis_service.set_session(wa_id, ConversationState.REGISTRATION_NAME, {})
+        else:
+            await redis_service.set_session(wa_id, ConversationState.ONBOARDING, data)
+        return
 
     if state.startswith("REGISTRATION_"):
         await handle_registration(wa_id, message, state, data, current_lang)
