@@ -157,6 +157,18 @@ async def handle_message(wa_id: str, message: dict):
             await handle_main_menu(wa_id, current_lang)
             return
 
+        if intent == "CHANGE_LANGUAGE" or "language" in english_text.lower():
+            from whatsapp.flows.settings import handle_settings
+            # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE
+            buttons = [
+                {"type": "reply", "reply": {"id": "lang_en", "title": "English"}},
+                {"type": "reply", "reply": {"id": "lang_hi", "title": "Hindi"}},
+                {"type": "reply", "reply": {"id": "lang_bn", "title": "Bengali"}},
+            ]
+            await whatsapp_client.send_buttons(wa_id, "Please select your preferred language:", buttons, current_lang)
+            await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})
+            return
+
         if (
             interactive_id == "menu_iot_status"
             or intent == "HIVE_STATUS"
@@ -204,6 +216,14 @@ async def handle_message(wa_id: str, message: dict):
                         wa_id, "Sorry, I could not process that right now.", current_lang
                     )
             return
+
+        # Robust Fallback: Registered user sent something we don't understand in IDLE state
+        await whatsapp_client.send_text(
+            wa_id,
+            "I'm not sure I understood that. You can send 'menu' to see what I can do, or ask me a question about HoneyChain!",
+            current_lang,
+        )
+        return
 
     # ── 7. FSM routing ────────────────────────────────────────────────────────
 
@@ -271,17 +291,8 @@ async def handle_message(wa_id: str, message: dict):
 
     # Bug fix #20: SETTINGS_CHOOSE_LANGUAGE was declared but never routed
     elif state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
-        lang_map = {"1": "en", "2": "hi", "3": "bn", "4": "ta"}
-        choice   = english_text.strip()
-        new_lang = lang_map.get(choice)
-        if new_lang:
-            update_user_language(wa_id, new_lang)
-            await whatsapp_client.send_text(wa_id, "Language updated!", new_lang)
-        else:
-            await whatsapp_client.send_text(
-                wa_id, "Invalid choice. Please enter 1 (English), 2 (Hindi), 3 (Bengali) or 4 (Tamil).", current_lang
-            )
-        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+        from whatsapp.flows.settings import handle_settings
+        await handle_settings(wa_id, message, state, data, current_lang)
 
     # Bug fix #19: DIAGNOSTICS states were declared but never routed
     elif state in (
