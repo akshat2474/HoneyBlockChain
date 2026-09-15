@@ -135,25 +135,28 @@ async def handle_interactive_menus(
             await whatsapp_client.send_buttons(wa_id, reply, buttons, lang)
             return
 
-        elif interactive_id == "market_register":
+        elif interactive_id in ("market_full_harvest", "market_register"):
             reply = (
-                "Let's register a new harvest.\n\n"
-                "Which hive number are you harvesting from? "
-                "(Enter a number, e.g. 1, 2, 3)"
+                "🍯 *Register a Harvest*\n\n"
+                "*Step 1/4:* What is the name of your apiary or yard? (e.g., Punjab Farm, Home Garden)"
             )
-            await whatsapp_client.send_text(wa_id, reply, lang)
-            await redis_service.set_session(wa_id, ConversationState.HARVEST_HIVE_NUM, data)
-            return
-
-        elif interactive_id == "market_full_harvest":
-            reply = "Let's start a professional harvest registration.\n\nWhich Yard ID are you harvesting from? (e.g., YARD-001)"
             await whatsapp_client.send_text(wa_id, reply, lang)
             await redis_service.set_session(wa_id, ConversationState.HARVEST_YARD_ID, data)
             return
 
         else:
-            await whatsapp_client.send_text(
-                wa_id, "Please tap one of the buttons from the menu above.", lang
+            # User sent voice/text while in market menu — re-show the menu
+            from whatsapp.client import whatsapp_client as wc
+            sections = [{
+                "title": "Harvest & Market",
+                "rows": [
+                    {"id": "market_subsidy",      "title": "Govt Subsidies",  "description": "KVIC & National Honey Mission schemes"},
+                    {"id": "market_prices",       "title": "Honey Prices",    "description": "Current farmgate rates"},
+                    {"id": "market_full_harvest", "title": "Register Harvest","description": "Record a new honey harvest on blockchain"},
+                ]
+            }]
+            await whatsapp_client.send_list(
+                wa_id, "🍯 Please select an option:", sections, lang
             )
             return
 
