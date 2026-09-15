@@ -5,7 +5,7 @@ import hashlib
 import json
 from config import settings
 from whatsapp.handler import handle_message
-from database import engine, Base
+from database import engine, Base, SessionLocal
 import models
 
 # Create database tables if they don't exist
@@ -75,4 +75,30 @@ async def reset_all():
         print(f"Redis flush error: {e}")
         
     return {"status": "success", "message": "Database and Redis have been completely reset! You are now a new user."}
+
+@app.get("/dev/seed-batch/{wa_id}")
+async def seed_batch(wa_id: str):
+    """Creates a test honey batch BATCH-DEMO0001 owned by the given WhatsApp number."""
+    from models import HoneyBatch, Beekeeper
+    db = SessionLocal()
+    try:
+        bk = db.query(Beekeeper).filter(Beekeeper.phone == wa_id).first()
+        batch = HoneyBatch(
+            batch_id_hash="BATCH-DEMO0001",
+            beekeeper_id=bk.id if bk else None,
+            quantity_grams=25000,
+            honey_type="Mustard",
+            hives_harvested=3,
+            status="PENDING",
+            current_custodian=wa_id,
+            lab_verified=False,
+        )
+        db.add(batch)
+        db.commit()
+        return {"status": "success", "batch_id": "BATCH-DEMO0001", "owner": wa_id}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "detail": str(e)}
+    finally:
+        db.close()
 

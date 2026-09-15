@@ -359,38 +359,45 @@ async def handle_message(wa_id: str, message: dict):
         ConversationState.TRANSFER_BUYER_ID,
         ConversationState.TRANSFER_CONFIRM,
     ):
+        data["english_text"] = english_text
+        data["interactive_id"] = interactive_id
         from whatsapp.flows.transfer import handle_transfer
         await handle_transfer(wa_id, message, state, data, current_lang)
 
     # Bug fix #20: BATCH_STATUS was declared but never routed
     elif state == ConversationState.BATCH_STATUS_AWAITING_ID:
         batch_id = english_text.strip().upper()
-        if batch_id.startswith("BATCH-"):
-            db = SessionLocal()
-            try:
-                from models import HoneyBatch
-                batch = db.query(HoneyBatch).filter(
-                    HoneyBatch.batch_id_hash == batch_id
-                ).first()
-                if batch:
-                    reply = (
-                        f"Batch Verified\n\n"
-                        f"Batch ID: {batch.batch_id_hash}\n"
-                        f"Status: {batch.status}\n"
-                        f"Current Custodian: +{batch.current_custodian}\n"
-                        f"Lab Verified: {'Yes' if batch.lab_verified else 'No'}"
-                    )
-                else:
-                    reply = "Batch not found. Please check the ID and try again."
-            except Exception as e:
-                print(f"Batch status error: {e}")
-                reply = "Could not retrieve batch status. Please try again."
-            finally:
-                db.close()
-        else:
-            reply = "Invalid format. Please enter a valid Batch ID (e.g., BATCH-A1B2C3D4)."
-        await whatsapp_client.send_text(wa_id, reply, current_lang)
-        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+        if not batch_id.startswith("BATCH-"):
+            reply = "❌ Invalid format. Please enter a valid Batch ID (e.g., BATCH-A1B2C3D4).\n\nSend 'menu' to return."
+            await whatsapp_client.send_text(wa_id, reply, current_lang)
+            return
+
+        db = SessionLocal()
+        try:
+            from models import HoneyBatch
+            batch = db.query(HoneyBatch).filter(
+                HoneyBatch.batch_id_hash == batch_id
+            ).first()
+            if batch:
+                reply = (
+                    f"✅ Batch Found!\n\n"
+                    f"Batch ID: {batch.batch_id_hash}\n"
+                    f"Status: {batch.status}\n"
+                    f"Quantity: {batch.quantity_grams / 1000:.1f} kg\n"
+                    f"Current Custodian: +{batch.current_custodian}\n"
+                    f"Lab Verified: {'Yes ✅' if batch.lab_verified else 'No ❌'}"
+                )
+            else:
+                reply = f"❌ Batch '{batch_id}' not found.\n\nPlease double-check the Batch ID and try again."
+        except Exception as e:
+            print(f"Batch status error: {e}")
+            reply = "Could not retrieve batch status. Please try again."
+        finally:
+            db.close()
+
+        buttons = [{"type": "reply", "reply": {"id": "btn_back", "title": "Back to Menu"}}]
+        await whatsapp_client.send_buttons(wa_id, reply, buttons, current_lang)
+        await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": current_lang})
 
     # Bug fix #20: SETTINGS_CHOOSE_LANGUAGE was declared but never routed
     elif state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
