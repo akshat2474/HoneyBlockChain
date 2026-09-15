@@ -4,8 +4,9 @@ from whatsapp.states import ConversationState
 
 async def handle_main_menu(wa_id: str, lang: str = "en"):
     buttons = [
-        {"type": "reply", "reply": {"id": "menu_hive_status", "title": "📡 Hive Status"}},
-        {"type": "reply", "reply": {"id": "menu_ask_doubt", "title": "❓ Ask a Doubt"}}
+        {"type": "reply", "reply": {"id": "menu_iot_status", "title": "📡 IoT Status"}},
+        {"type": "reply", "reply": {"id": "menu_health_care", "title": "🩺 Health & Care"}},
+        {"type": "reply", "reply": {"id": "menu_market_schemes", "title": "🍯 Market & Schemes"}}
     ]
 
     text = "👋 Welcome to HoneyBlockChain!\n\nPlease select an option below:"

@@ -95,27 +95,18 @@ async def handle_message(wa_id: str, message: dict):
                 await handle_main_menu(wa_id, current_lang)
                 return
                 
-            if interactive_id == "menu_hive_status" or intent == "HIVE_STATUS" or "status" in english_text.lower():
+            if interactive_id == "menu_iot_status" or intent == "HIVE_STATUS" or "status" in english_text.lower():
                 # Mock IoT response
                 iot_reply = "🍯 *IoT Hive Status*\n\n✅ Hive 1: Healthy (35°C, 45% Humidity)\n✅ Hive 2: Healthy (34°C, 46% Humidity)\n\nEverything looks good!"
                 await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
-                return
-                
-            if interactive_id == "menu_ask_doubt" or intent == "ASK_DOUBT" or "doubt" in english_text.lower() or "question" in english_text.lower():
-                from whatsapp.llm_service import client
-                if client:
-                    ans = client.models.generate_content(
-                        model='gemini-3.6-flash',
-                        contents=f"You are a helpful beekeeping assistant. Answer this farmer's doubt clearly and concisely in english: {english_text}"
-                    )
-                    await whatsapp_client.send_text(wa_id, f"🤖 *AI Assistant:*\n{ans.text}", current_lang)
-                else:
-                    await whatsapp_client.send_text(wa_id, "Sorry, AI assistant is unavailable.", current_lang)
                 return
 
     # 5. Route to active flow (FSM)
     if state.startswith("REGISTRATION_"):
         await handle_registration(wa_id, message, state, data, current_lang)
+    elif state in [ConversationState.MAIN_MENU, ConversationState.MENU_HEALTH, ConversationState.MENU_MARKET, ConversationState.AWAITING_DOUBT_INPUT]:
+        from whatsapp.flows.expert_advice import handle_expert_advice
+        await handle_expert_advice(wa_id, message, state, data, current_lang)
     else:
         # Default fallback
         if not is_registered:

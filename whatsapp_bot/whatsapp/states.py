@@ -3,6 +3,9 @@ from enum import Enum
 class ConversationState(str, Enum):
     IDLE = "IDLE"
     MAIN_MENU = "MAIN_MENU"
+    MENU_HEALTH = "MENU_HEALTH"
+    MENU_MARKET = "MENU_MARKET"
+    AWAITING_DOUBT_INPUT = "AWAITING_DOUBT_INPUT"
 
     # Diagnostics
     DIAGNOSTICS_SELECT = "DIAGNOSTICS_SELECT"
