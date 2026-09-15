@@ -1,11 +1,17 @@
+﻿import asyncio
 from whatsapp.client import whatsapp_client
 from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
 from whatsapp.flows.main_menu import handle_main_menu
 from whatsapp.flows.registration import handle_registration
 from database import SessionLocal
-from models import WhatsAppUser
+from models import WhatsAppUser, Beekeeper
 from whatsapp.llm_service import analyze_incoming_text, analyze_incoming_audio
+
+
+# ---------------------------------------------------------------------------
+# DB helpers
+# ---------------------------------------------------------------------------
 
 def get_or_create_user(wa_id: str, default_lang: str = "en") -> WhatsAppUser:
     db = SessionLocal()
@@ -20,6 +26,7 @@ def get_or_create_user(wa_id: str, default_lang: str = "en") -> WhatsAppUser:
     finally:
         db.close()
 
+
 def update_user_language(wa_id: str, new_lang: str):
     db = SessionLocal()
     try:
@@ -30,108 +37,273 @@ def update_user_language(wa_id: str, new_lang: str):
     finally:
         db.close()
 
+
+# ---------------------------------------------------------------------------
+# Main message handler
+# ---------------------------------------------------------------------------
+
 async def handle_message(wa_id: str, message: dict):
     msg_type = message.get("type")
-    msg_id = message.get("id")
-    original_text = message.get("text", {}).get("body", "").strip() if msg_type == "text" else ""
-    interactive_id = message.get("interactive", {}).get("button_reply", {}).get("id", "")
-    
-    # Mark message as read (blue ticks)
+    msg_id   = message.get("id")
+    original_text = (
+        message.get("text", {}).get("body", "").strip()
+        if msg_type == "text" else ""
+    )
+
+    # ── 0. Deduplication & spam guard ────────────────────────────────────────
+    # Bug fix #22: these methods were built but never called
+    if msg_id and await redis_service.is_duplicate_message(msg_id):
+        print(f"[DEDUP] Skipping duplicate message {msg_id}")
+        return
+    if await redis_service.is_spamming(wa_id):
+        print(f"[SPAM]  Throttling {wa_id}")
+        return
+
+    # ── Mark as read (blue ticks) ─────────────────────────────────────────────
+    # Bug fix #12: wrapped inside mark_as_read itself now — no crash here
     if msg_id:
         await whatsapp_client.mark_as_read(msg_id)
-    
-    # 1. Translate incoming text/audio using LLM
-    lang = "en"
+
+    # ── 1. LLM analysis of incoming message ──────────────────────────────────
+    lang         = "en"
     english_text = original_text
-    intent = "UNKNOWN"
-    
+    intent       = "UNKNOWN"
+
     if msg_type == "text" and original_text:
-        analysis = analyze_incoming_text(original_text)
-        lang = analysis.detected_language
+        analysis     = analyze_incoming_text(original_text)
+        lang         = analysis.detected_language
         english_text = analysis.translated_english_text
-        intent = analysis.intent
-        print(f"🎤 [LLM TEXT IN] Lang: {lang} | Translated: {english_text} | Intent: {intent}")
+        # Bug fix #2: normalise intent — LLM may return lowercase or spaces
+        intent = analysis.intent.upper().replace(" ", "_").strip()
+        print(f"[LLM TEXT]  lang={lang} | intent={intent} | text={english_text!r}")
+
     elif msg_type == "audio":
         media_id = message.get("audio", {}).get("id")
         if media_id:
-            audio_bytes = await whatsapp_client.download_media(media_id)
-            analysis = analyze_incoming_audio(audio_bytes)
-            lang = analysis.detected_language
-            english_text = analysis.translated_english_text
-            intent = analysis.intent
-            print(f"🎤 [LLM AUDIO IN] Lang: {lang} | Translated: {english_text} | Intent: {intent}")
+            try:
+                # Bug fix #13: download_media now raises on failure; catch here
+                audio_bytes  = await whatsapp_client.download_media(media_id)
+                analysis     = analyze_incoming_audio(audio_bytes)
+                lang         = analysis.detected_language
+                english_text = analysis.translated_english_text
+                intent = analysis.intent.upper().replace(" ", "_").strip()
+                print(f"[LLM AUDIO] lang={lang} | intent={intent} | text={english_text!r}")
+            except Exception as e:
+                print(f"Audio processing error: {e}")
+                await whatsapp_client.send_text(
+                    wa_id,
+                    "Sorry, I could not process your voice note. Please send a text message.",
+                )
+                return
 
-    # 2. State Management
+    # ── 2. Session from Redis ─────────────────────────────────────────────────
     state_data = await redis_service.get_session(wa_id)
-    state = state_data.get("state", ConversationState.IDLE)
-    data = state_data.get("data", {})
-    
-    # Save the english text into data so the flows don't have to re-translate
+    state      = state_data.get("state", ConversationState.IDLE)
+    data       = state_data.get("data", {})
+    # Inject translated text so flows do not need to re-translate
     data["english_text"] = english_text
 
-    # 3. Check Database for Registration Status
-    from models import Beekeeper
+    # ── 3. Interactive reply id (button OR list) ──────────────────────────────
+    # Bug fix #18: was only checking button_reply; list_reply was silently ignored
+    interactive  = message.get("interactive", {})
+    interactive_id = (
+        interactive.get("button_reply", {}).get("id", "")
+        or interactive.get("list_reply",  {}).get("id", "")
+    )
+
+    # ── 4. Registration status ────────────────────────────────────────────────
     db = SessionLocal()
     try:
-        is_registered = db.query(Beekeeper).filter(Beekeeper.phone == wa_id).first() is not None
+        is_registered = (
+            db.query(Beekeeper).filter(Beekeeper.phone == wa_id).first() is not None
+        )
     finally:
         db.close()
 
-    user_meta = get_or_create_user(wa_id, lang)
-    if lang != "en" and lang != "UNKNOWN" and (msg_type == "text" or msg_type == "audio"):
-        update_user_language(wa_id, lang)
-    
-    current_lang = user_meta.language
+    # ── 5. User language ──────────────────────────────────────────────────────
+    # Bug fix #17: never store "UNKNOWN" as the user language
+    safe_lang = lang if lang not in ("", "UNKNOWN") else "en"
+    user_meta = get_or_create_user(wa_id, safe_lang)
+    if safe_lang not in ("en",) and msg_type in ("text", "audio"):
+        update_user_language(wa_id, safe_lang)
+    current_lang = user_meta.language if user_meta.language not in ("", "UNKNOWN") else "en"
 
-    # 4. Handle Global Intercepts (e.g. First-time registration or forced main menu)
-    if state in [ConversationState.IDLE, ConversationState.MAIN_MENU]:
+    # ── 6. Global intercepts — IDLE / MAIN_MENU ───────────────────────────────
+    if state in (ConversationState.IDLE, ConversationState.MAIN_MENU):
         if not is_registered:
-            # Force registration
-            if intent == "MAIN_MENU" or english_text.lower() in ["hi", "hello", "menu", "register"]:
-                await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, current_lang)
-                return
-        else:
-            if intent == "MAIN_MENU" or english_text.lower() in ["hi", "hello", "menu"]:
-                await handle_main_menu(wa_id, current_lang)
-                return
-                
-            if interactive_id == "menu_box_condition" or intent == "HIVE_STATUS" or "status" in english_text.lower() or "condition" in english_text.lower():
-                # Mock IoT response
-                iot_reply = "🍯 *IoT Box Condition*\n\n✅ Hive 1: Healthy (35°C, 45% Humidity)\n✅ Hive 2: Healthy (34°C, 46% Humidity)\n\nEverything looks good!"
-                await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
-                return
+            greeting_intents  = ("MAIN_MENU", "REGISTRATION")
+            greeting_keywords = ("hi", "hello", "menu", "register", "start")
+            if intent in greeting_intents or english_text.lower() in greeting_keywords:
+                # Bug fix #5: do NOT consume the greeting as a name.
+                # Just prompt and set state; the NEXT message will be the name.
+                await whatsapp_client.send_text(
+                    wa_id,
+                    "Welcome to *HoneyChain*! Let's get you registered.\n\n"
+                    "*Step 1/4:* What is your full name?",
+                    current_lang,
+                )
+                await redis_service.set_session(wa_id, ConversationState.REGISTRATION_NAME, {})
+            else:
+                # Bug fix #3: unregistered user free-text was silently dropped
+                await whatsapp_client.send_text(
+                    wa_id,
+                    "Welcome to HoneyChain! Please send *hi* to register and get started.",
+                    current_lang,
+                )
+            return
 
-            if intent == "ASK_DOUBT" or "honeychain" in english_text.lower():
-                from whatsapp.llm_service import client, settings
-                if client:
-                    last_query = data.get("last_query", "")
-                    last_reply = data.get("last_reply", "")
-                    
-                    context_str = f"Context of previous message:\nUser asked: '{last_query}'\nYou answered: '{last_reply}'\n\n" if last_query else ""
-                    prompt = f"{context_str}You are HoneyChain support. Answer this farmer's query precisely in 1 or 2 short sentences (max 400 characters). If they ask you to repeat or change language, repeat your previous answer. User: {english_text}"
-                    
-                    try:
-                        ans = client.models.generate_content(model=settings.GEMINI_MODEL, contents=prompt)
-                        
-                        # Save short-term memory to Redis
-                        data["last_query"] = original_text
-                        data["last_reply"] = ans.text
-                        await redis_service.set_session(wa_id, state, data)
-                        
-                        await whatsapp_client.send_text(wa_id, f"🤖 {ans.text}", current_lang)
-                    except Exception as e:
-                        await whatsapp_client.send_text(wa_id, "Sorry, I couldn't process that right now.", current_lang)
-                return
+        # ── Registered user shortcuts ─────────────────────────────────────────
+        if intent in ("MAIN_MENU",) or english_text.lower() in ("hi", "hello", "menu"):
+            await handle_main_menu(wa_id, current_lang)
+            return
 
-    # 5. Route to active flow (FSM)
+        if (
+            interactive_id == "menu_iot_status"
+            or intent == "HIVE_STATUS"
+            or "status" in english_text.lower()
+        ):
+            iot_reply = (
+                "Hive Status\n\n"
+                "Hive 1: Healthy (35 C, 45% Humidity)\n"
+                "Hive 2: Healthy (34 C, 46% Humidity)\n\n"
+                "Everything looks good!"
+            )
+            await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
+            return
+
+        if intent == "ASK_DOUBT" or "honeychain" in english_text.lower():
+            from whatsapp.llm_service import client as gemini_client, settings
+            if gemini_client:
+                last_query = data.get("last_query", "")
+                last_reply = data.get("last_reply", "")
+                context_str = (
+                    f"Context of previous message:\nUser asked: '{last_query}'\nYou answered: '{last_reply}'\n\n"
+                    if last_query else ""
+                )
+                prompt = (
+                    f"{context_str}You are HoneyChain support. Answer this farmer's query precisely "
+                    f"in 1 or 2 short sentences (max 400 characters). "
+                    f"If they ask you to repeat or change language, repeat your previous answer.\n"
+                    f"User: {english_text}"
+                )
+                try:
+                    # Bug fix: run blocking Gemini call in thread pool
+                    ans = await asyncio.to_thread(
+                        gemini_client.models.generate_content,
+                        model=settings.GEMINI_MODEL,
+                        contents=prompt,
+                    )
+                    reply_text = (ans.text or "").strip() or "I am not sure about that. Please contact support."
+                    data["last_query"] = original_text
+                    data["last_reply"] = reply_text
+                    await redis_service.set_session(wa_id, state, data)
+                    await whatsapp_client.send_text(wa_id, f"Bot: {reply_text}", current_lang)
+                except Exception as e:
+                    print(f"Gemini Q&A error: {e}")
+                    await whatsapp_client.send_text(
+                        wa_id, "Sorry, I could not process that right now.", current_lang
+                    )
+            return
+
+    # ── 7. FSM routing ────────────────────────────────────────────────────────
+
     if state.startswith("REGISTRATION_"):
         await handle_registration(wa_id, message, state, data, current_lang)
-    elif state in [ConversationState.MAIN_MENU, ConversationState.MENU_HEALTH, ConversationState.MENU_MARKET, ConversationState.HARVEST_HIVE_NUM, ConversationState.HARVEST_WEIGHT]:
+
+    elif state in (
+        ConversationState.MAIN_MENU,
+        ConversationState.MENU_HEALTH,
+        ConversationState.MENU_MARKET,
+        ConversationState.HARVEST_HIVE_NUM,
+        ConversationState.HARVEST_WEIGHT,
+    ):
         from whatsapp.flows.interactive_menus import handle_interactive_menus
         await handle_interactive_menus(wa_id, message, state, data, current_lang)
-    else:
-        # Default fallback
-        if not is_registered:
-            await handle_registration(wa_id, message, ConversationState.REGISTRATION_NAME, data, current_lang)
+
+    # Bug fix #6: route to the full harvest flow (was dead code before)
+    elif state in (
+        ConversationState.HARVEST_YARD_ID,
+        ConversationState.HARVEST_HIVES,
+        ConversationState.HARVEST_VOLUME,
+        ConversationState.HARVEST_VARIETAL,
+        ConversationState.HARVEST_IMAGE,
+    ):
+        from whatsapp.flows.harvest import handle_harvest
+        await handle_harvest(wa_id, message, state, data, current_lang)
+
+    elif state in (
+        ConversationState.TRANSFER_BATCH_ID,
+        ConversationState.TRANSFER_BUYER_ID,
+        ConversationState.TRANSFER_CONFIRM,
+    ):
+        from whatsapp.flows.transfer import handle_transfer
+        await handle_transfer(wa_id, message, state, data, current_lang)
+
+    # Bug fix #20: BATCH_STATUS was declared but never routed
+    elif state == ConversationState.BATCH_STATUS_AWAITING_ID:
+        batch_id = english_text.strip().upper()
+        if batch_id.startswith("BATCH-"):
+            db = SessionLocal()
+            try:
+                from models import HoneyBatch
+                batch = db.query(HoneyBatch).filter(
+                    HoneyBatch.batch_id_hash == batch_id
+                ).first()
+                if batch:
+                    reply = (
+                        f"Batch Verified\n\n"
+                        f"Batch ID: {batch.batch_id_hash}\n"
+                        f"Status: {batch.status}\n"
+                        f"Current Custodian: +{batch.current_custodian}\n"
+                        f"Lab Verified: {'Yes' if batch.lab_verified else 'No'}"
+                    )
+                else:
+                    reply = "Batch not found. Please check the ID and try again."
+            except Exception as e:
+                print(f"Batch status error: {e}")
+                reply = "Could not retrieve batch status. Please try again."
+            finally:
+                db.close()
         else:
+            reply = "Invalid format. Please enter a valid Batch ID (e.g., BATCH-A1B2C3D4)."
+        await whatsapp_client.send_text(wa_id, reply, current_lang)
+        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+
+    # Bug fix #20: SETTINGS_CHOOSE_LANGUAGE was declared but never routed
+    elif state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
+        lang_map = {"1": "en", "2": "hi", "3": "bn", "4": "ta"}
+        choice   = english_text.strip()
+        new_lang = lang_map.get(choice)
+        if new_lang:
+            update_user_language(wa_id, new_lang)
+            await whatsapp_client.send_text(wa_id, "Language updated!", new_lang)
+        else:
+            await whatsapp_client.send_text(
+                wa_id, "Invalid choice. Please enter 1 (English), 2 (Hindi), 3 (Bengali) or 4 (Tamil).", current_lang
+            )
+        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+
+    # Bug fix #19: DIAGNOSTICS states were declared but never routed
+    elif state in (
+        ConversationState.DIAGNOSTICS_SELECT,
+        ConversationState.DIAGNOSTICS_AWAITING_IMAGE,
+        ConversationState.DIAGNOSTICS_AWAITING_AUDIO,
+        ConversationState.DIAGNOSTICS_PROCESSING,
+    ):
+        await whatsapp_client.send_text(
+            wa_id,
+            "Diagnostics feature is coming soon! Send 'menu' to go back.",
+            current_lang,
+        )
+        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+
+    else:
+        # Unknown / orphaned state — reset gracefully, never go silent
+        print(f"[FSM] Unknown state '{state}' for {wa_id}. Resetting to idle.")
+        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+        if is_registered:
             await handle_main_menu(wa_id, current_lang)
+        else:
+            await whatsapp_client.send_text(
+                wa_id, "Send 'hi' to get started.", current_lang
+            )

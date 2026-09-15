@@ -28,10 +28,16 @@ async def handle_interactive_menus(wa_id: str, message: dict, state: str, data: 
             buttons = [
                 {"type": "reply", "reply": {"id": "market_subsidy", "title": "Govt Subsidies"}},
                 {"type": "reply", "reply": {"id": "market_prices", "title": "Honey Prices"}},
-                {"type": "reply", "reply": {"id": "market_register", "title": "Register Harvest"}}
+                {"type": "reply", "reply": {"id": "market_register", "title": "Register Harvest"}},
+                {"type": "reply", "reply": {"id": "market_transfer", "title": "Transfer Custody"}}
             ]
             await whatsapp_client.send_buttons(wa_id, "What are you looking for?", buttons, lang)
             await redis_service.set_session(wa_id, ConversationState.MENU_MARKET, data)
+            return
+
+        elif interactive_id == "market_transfer":
+            await whatsapp_client.send_text(wa_id, "Please enter the Batch ID you wish to transfer (e.g., BATCH-123):", lang)
+            await redis_service.set_session(wa_id, ConversationState.TRANSFER_BATCH_ID, data)
             return
 
     # 2. Handling Sub-Menu Clicks (Hardcoded Responses without LLM generation)
