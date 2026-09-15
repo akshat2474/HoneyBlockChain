@@ -104,9 +104,9 @@ async def handle_message(wa_id: str, message: dict):
     # 5. Route to active flow (FSM)
     if state.startswith("REGISTRATION_"):
         await handle_registration(wa_id, message, state, data, current_lang)
-    elif state in [ConversationState.MAIN_MENU, ConversationState.MENU_HEALTH, ConversationState.MENU_MARKET, ConversationState.AWAITING_DOUBT_INPUT]:
-        from whatsapp.flows.expert_advice import handle_expert_advice
-        await handle_expert_advice(wa_id, message, state, data, current_lang)
+    elif state in [ConversationState.MAIN_MENU, ConversationState.MENU_HEALTH, ConversationState.MENU_MARKET, ConversationState.HARVEST_HIVE_NUM, ConversationState.HARVEST_WEIGHT]:
+        from whatsapp.flows.interactive_menus import handle_interactive_menus
+        await handle_interactive_menus(wa_id, message, state, data, current_lang)
     else:
         # Default fallback
         if not is_registered:
