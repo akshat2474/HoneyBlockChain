@@ -101,6 +101,17 @@ async def handle_message(wa_id: str, message: dict):
                 await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
                 return
 
+            if intent == "ASK_DOUBT" or "honeychain" in english_text.lower():
+                from whatsapp.llm_service import client, settings
+                if client:
+                    prompt = f"You are HoneyChain support. Answer this farmer's query precisely in 1 or 2 short sentences (max 400 characters). User: {english_text}"
+                    try:
+                        ans = client.models.generate_content(model=settings.GEMINI_MODEL, contents=prompt)
+                        await whatsapp_client.send_text(wa_id, f"🤖 {ans.text}", current_lang)
+                    except Exception as e:
+                        await whatsapp_client.send_text(wa_id, "Sorry, I couldn't process that right now.", current_lang)
+                return
+
     # 5. Route to active flow (FSM)
     if state.startswith("REGISTRATION_"):
         await handle_registration(wa_id, message, state, data, current_lang)
