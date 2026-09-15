@@ -45,7 +45,12 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
                 'temperature': 0.1
             },
         )
-        return response.parsed
+        # Guard: response.parsed can be None if Gemini returns malformed JSON
+        parsed = response.parsed
+        if parsed is None:
+            print(f"LLM Text Analysis Warning: response.parsed is None, using fallback")
+            return IncomingAnalysis(translated_english_text=text, detected_language="en", intent="UNKNOWN")
+        return parsed
     except Exception as e:
         print(f"LLM Incoming Analysis Error: {e}")
         return IncomingAnalysis(translated_english_text=text, detected_language="en", intent="UNKNOWN")
@@ -83,7 +88,12 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
                 'temperature': 0.1
             },
         )
-        return response.parsed
+        # Guard: response.parsed can be None if Gemini returns malformed JSON
+        parsed = response.parsed
+        if parsed is None:
+            print(f"LLM Audio Analysis Warning: response.parsed is None, using fallback")
+            return IncomingAnalysis(translated_english_text="[Audio processing failed]", detected_language="en", intent="UNKNOWN")
+        return parsed
     except Exception as e:
         print(f"LLM Audio Analysis Error: {e}")
         return IncomingAnalysis(translated_english_text="[Audio processing failed]", detected_language="en", intent="UNKNOWN")

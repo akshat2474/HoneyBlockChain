@@ -1,58 +1,84 @@
+﻿import asyncio
 import httpx
 from config import settings
 
+
 class WhatsAppClient:
     def __init__(self):
-        self.base_url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+        self.base_url = (
+            f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}"
+            f"/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+        )
         self.headers = {
             "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
         self.media_headers = {
             "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}"
         }
 
     async def download_media(self, media_id: str) -> bytes:
-        async with httpx.AsyncClient() as client:
-            # 1. Get Media URL
-            res = await client.get(f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/{media_id}", headers=self.media_headers)
+        """Download binary media from WhatsApp. Raises on failure so caller can handle."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Step 1: resolve media URL
+            res = await client.get(
+                f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/{media_id}",
+                headers=self.media_headers,
+            )
             res.raise_for_status()
             media_url = res.json().get("url")
-            
-            # 2. Download Binary Data
+            if not media_url:
+                raise ValueError(f"No media URL returned for media_id={media_id}")
+            # Step 2: download binary
             media_res = await client.get(media_url, headers=self.media_headers)
             media_res.raise_for_status()
             return media_res.content
 
     async def _send(self, payload: dict):
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.base_url, json=payload, headers=self.headers)
-            try:
+        """POST a message payload to the WhatsApp API. Logs errors, never raises."""
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(self.base_url, json=payload, headers=self.headers)
                 response.raise_for_status()
                 return response.json()
-            except httpx.HTTPStatusError as e:
-                print(f"WhatsApp API Error: {e.response.text}")
-                return None
+        except httpx.HTTPStatusError as e:
+            print(f"WhatsApp API HTTP Error {e.response.status_code}: {e.response.text}")
+            return None
+        except Exception as e:
+            print(f"WhatsApp API Error: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Bug fix #15: use asyncio.to_thread so synchronous LLM translation
+    # calls do NOT block the asyncio event loop.
+    # ------------------------------------------------------------------
+
+    async def _translate(self, text: str, lang: str) -> str:
+        """Run synchronous translate_outgoing_text in a thread pool."""
+        from whatsapp.llm_service import translate_outgoing_text
+        return await asyncio.to_thread(translate_outgoing_text, text, lang)
 
     async def send_text(self, to: str, text: str, lang: str = "en"):
-        from whatsapp.llm_service import translate_outgoing_text
-        translated = translate_outgoing_text(text, lang)
+        translated = await self._translate(text, lang)
         return await self._send({
             "messaging_product": "whatsapp",
             "to": to,
             "type": "text",
-            "text": {"body": translated}
+            "text": {"body": translated},
         })
 
     async def send_buttons(self, to: str, text: str, buttons: list, lang: str = "en"):
-        from whatsapp.llm_service import translate_outgoing_text
-        translated = translate_outgoing_text(text, lang)
-        
-        # We also translate the button titles
+        translated_body = await self._translate(text, lang)
+
         translated_buttons = []
         for btn in buttons:
-            new_btn = btn.copy()
-            new_btn["reply"]["title"] = translate_outgoing_text(btn["reply"]["title"], lang)
+            new_btn = {
+                "type": btn["type"],
+                "reply": {
+                    "id": btn["reply"]["id"],
+                    "title": await self._translate(btn["reply"]["title"], lang),
+                },
+            }
             translated_buttons.append(new_btn)
 
         return await self._send({
@@ -61,26 +87,23 @@ class WhatsAppClient:
             "type": "interactive",
             "interactive": {
                 "type": "button",
-                "body": {"text": translated},
-                "action": {
-                    "buttons": translated_buttons
-                }
-            }
+                "body": {"text": translated_body},
+                "action": {"buttons": translated_buttons},
+            },
         })
 
     async def send_list(self, to: str, text: str, sections: list, lang: str = "en"):
-        from whatsapp.llm_service import translate_outgoing_text
-        translated_text = translate_outgoing_text(text, lang)
-        
+        translated_text = await self._translate(text, lang)
+
         translated_sections = []
         for sec in sections:
             new_sec = sec.copy()
-            new_sec["title"] = translate_outgoing_text(sec["title"], lang)
+            new_sec["title"] = await self._translate(sec["title"], lang)
             new_rows = []
             for row in sec["rows"]:
                 new_row = row.copy()
-                new_row["title"] = translate_outgoing_text(row["title"], lang)
-                new_row["description"] = translate_outgoing_text(row.get("description", ""), lang)
+                new_row["title"] = await self._translate(row["title"], lang)
+                new_row["description"] = await self._translate(row.get("description", ""), lang)
                 new_rows.append(new_row)
             new_sec["rows"] = new_rows
             translated_sections.append(new_sec)
@@ -93,18 +116,28 @@ class WhatsAppClient:
                 "type": "list",
                 "body": {"text": translated_text},
                 "action": {
-                    "button": translate_outgoing_text("Menu", lang),
-                    "sections": translated_sections
-                }
-            }
+                    "button": await self._translate("Menu", lang),
+                    "sections": translated_sections,
+                },
+            },
         })
 
     async def mark_as_read(self, message_id: str):
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                self.base_url,
-                json={"messaging_product": "whatsapp", "status": "read", "message_id": message_id},
-                headers=self.headers
-            )
+        """Mark a message as read (blue ticks). Non-critical — logs errors, never raises."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    self.base_url,
+                    json={
+                        "messaging_product": "whatsapp",
+                        "status": "read",
+                        "message_id": message_id,
+                    },
+                    headers=self.headers,
+                )
+        except Exception as e:
+            # Non-critical: failing to show blue ticks should not block message handling
+            print(f"mark_as_read failed for {message_id}: {e}")
+
 
 whatsapp_client = WhatsAppClient()
