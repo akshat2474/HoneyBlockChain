@@ -29,7 +29,9 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
     3. Categorize the INTENT into one of the following:
        - REGISTRATION (User wants to register or join)
        - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
-       - HIVE_STATUS (User wants to check the IoT status of their hive or box condition)
+       - HIVE_STATUS (User wants to check the IoT sensor status of their hive or box)
+       - HEALTH_CHECK (User wants to check bee health, diseases, queen status, or hive condition)
+       - HARVEST_MARKET (User wants to register a harvest, check honey prices, or view government subsidies)
        - MAIN_MENU (User is saying hi, hello, or asking for the menu)
        - CHANGE_LANGUAGE (User wants to change the bot's language, OR user just typed the name of a language like "Telugu", "Marathi", "Tamil")
        - TRANSFER (User wants to transfer custody of a batch to someone else)

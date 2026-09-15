@@ -226,15 +226,41 @@ async def handle_message(wa_id: str, message: dict):
         if (
             interactive_id == "menu_iot_status"
             or intent == "HIVE_STATUS"
-            or "status" in english_text.lower()
         ):
             iot_reply = (
-                "Hive Status\n\n"
-                "Hive 1: Healthy (35 C, 45% Humidity)\n"
-                "Hive 2: Healthy (34 C, 46% Humidity)\n\n"
-                "Everything looks good!"
+                "🌡️ *Hive IoT Status*\n\n"
+                "Hive 1: ✅ Healthy (35°C, 45% Humidity)\n"
+                "Hive 2: ⚠️ Warning – High Temp (38°C)\n"
+                "Hive 3: ✅ Healthy (34°C, 47% Humidity)\n\n"
+                "💡 Tip: High temp in Hive 2 may indicate swarming. Inspect soon!"
             )
-            await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
+            buttons = [{"type": "reply", "reply": {"id": "btn_back", "title": "Back to Menu"}}]
+            await whatsapp_client.send_buttons(wa_id, iot_reply, buttons, current_lang)
+            return
+
+        if intent == "HEALTH_CHECK" or interactive_id == "menu_health_care":
+            buttons = [
+                {"type": "reply", "reply": {"id": "health_disease",   "title": "Check for Diseases"}},
+                {"type": "reply", "reply": {"id": "health_queen",     "title": "Queen Bee Status"}},
+                {"type": "reply", "reply": {"id": "health_condition", "title": "Condition of Hives"}},
+            ]
+            await whatsapp_client.send_buttons(
+                wa_id, "🐝 What health information do you need?", buttons, current_lang
+            )
+            await redis_service.set_session(wa_id, ConversationState.MENU_HEALTH, data)
+            return
+
+        if intent == "HARVEST_MARKET" or interactive_id == "menu_market_schemes":
+            buttons = [
+                {"type": "reply", "reply": {"id": "market_subsidy",      "title": "Govt Subsidies"}},
+                {"type": "reply", "reply": {"id": "market_prices",       "title": "Honey Prices"}},
+                {"type": "reply", "reply": {"id": "market_register",     "title": "Quick Register"}},
+                {"type": "reply", "reply": {"id": "market_full_harvest", "title": "Pro Harvest"}},
+            ]
+            await whatsapp_client.send_buttons(
+                wa_id, "🍯 What are you looking for?", buttons, current_lang
+            )
+            await redis_service.set_session(wa_id, ConversationState.MENU_MARKET, data)
             return
 
         if intent == "ASK_DOUBT" or "honeychain" in english_text.lower():
