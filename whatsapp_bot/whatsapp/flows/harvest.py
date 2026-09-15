@@ -1,11 +1,12 @@
-﻿import time
-import hashlib
 from whatsapp.client import whatsapp_client
 from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
-from whatsapp.i18n import t  # Bug fix #7: module now exists
+from whatsapp.i18n import t
+from whatsapp.flows.main_menu import handle_main_menu
 from database import SessionLocal
 from models import HoneyBatch, Beekeeper
+import time
+import hashlib
 
 
 async def handle_harvest(wa_id: str, message: dict, state: str, data: dict, lang: str = "en"):
@@ -24,8 +25,9 @@ async def handle_harvest(wa_id: str, message: dict, state: str, data: dict, lang
     text = data.get("english_text", "").strip()
 
     if text.lower() == "cancel":
-        await redis_service.delete_session(wa_id)
-        await whatsapp_client.send_text(wa_id, t(lang, "general.cancelled"), lang)
+        await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": lang})
+        await whatsapp_client.send_text(wa_id, "❌ Harvest cancelled.", lang)
+        await handle_main_menu(wa_id, lang)
         return
 
     # ── Step 1: yard / apiary name ────────────────────────────────────────────
@@ -120,8 +122,10 @@ async def handle_harvest(wa_id: str, message: dict, state: str, data: dict, lang
             qty=data["weight_kg"],
             type=data["varietal"],
         )
-        await whatsapp_client.send_text(wa_id, reply, lang)
-        await redis_service.set_session(wa_id, ConversationState.IDLE, {})
+        buttons = [{"type": "reply", "reply": {"id": "btn_back", "title": "Back to Menu"}}]
+        await whatsapp_client.send_buttons(wa_id, reply, buttons, lang)
+        await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": lang})
+        return
         return
 
     # ── HARVEST_IMAGE (optional — skipped for now) ────────────────────────────

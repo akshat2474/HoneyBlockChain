@@ -256,8 +256,7 @@ async def handle_message(wa_id: str, message: dict):
                 "rows": [
                     {"id": "market_subsidy",      "title": "Govt Subsidies",  "description": "KVIC & National Honey Mission schemes"},
                     {"id": "market_prices",       "title": "Honey Prices",    "description": "Current farmgate rates"},
-                    {"id": "market_register",     "title": "Quick Harvest",   "description": "Register a harvest quickly"},
-                    {"id": "market_full_harvest", "title": "Pro Harvest",     "description": "Full professional harvest registration"},
+                    {"id": "market_full_harvest", "title": "Register Harvest","description": "Record a new honey harvest on blockchain"},
                 ]
             }]
             await whatsapp_client.send_list(
