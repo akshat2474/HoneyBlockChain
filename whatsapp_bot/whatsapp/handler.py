@@ -6,7 +6,7 @@ from whatsapp.flows.main_menu import handle_main_menu
 from whatsapp.flows.registration import handle_registration
 from database import SessionLocal
 from models import WhatsAppUser, Beekeeper
-from whatsapp.llm_service import analyze_incoming_text, analyze_incoming_audio
+from whatsapp.llm_service import analyze_incoming_text, analyze_incoming_audio, translate_outgoing_text
 
 
 # ---------------------------------------------------------------------------
@@ -140,21 +140,21 @@ async def handle_message(wa_id: str, message: dict):
             lang_names = {"en": "English", "hi": "Hindi", "bn": "Bengali", "te": "Telugu", "ta": "Tamil", "mr": "Marathi"}
             lang_name = lang_names.get(req_lang, req_lang.upper())
             
+            msg = f"✅ Language updated to {lang_name}!\n\nYou can send 'menu' to return to the main options."
             await whatsapp_client.send_text(
-                wa_id, f"✅ Language updated to {lang_name}!\n\nYou can send 'menu' to return to the main options.", current_lang
+                wa_id, translate_outgoing_text(msg, current_lang), current_lang
             )
-            # Make sure to clear any stuck state like SETTINGS_CHOOSE_LANGUAGE
+            # Clear stuck settings state
             if state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
                 await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": current_lang})
             return
 
         # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE if they didn't specify one
-        buttons = [
-            {"type": "reply", "reply": {"id": "lang_en", "title": "English"}},
-            {"type": "reply", "reply": {"id": "lang_hi", "title": "Hindi"}},
-            {"type": "reply", "reply": {"id": "lang_te", "title": "Telugu"}},
-        ]
-        await whatsapp_client.send_buttons(wa_id, "Please select your preferred language:", buttons, current_lang)
+        await whatsapp_client.send_text(
+            wa_id,
+            "Which language would you like to use? (Please type the name of the language, e.g., Telugu, Marathi, Hindi)",
+            current_lang
+        )
         await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})
         return
 

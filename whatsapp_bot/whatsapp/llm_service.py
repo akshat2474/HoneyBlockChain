@@ -31,11 +31,11 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
        - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
        - HIVE_STATUS (User wants to check the IoT status of their hive or box condition)
        - MAIN_MENU (User is saying hi, hello, or asking for the menu)
-       - CHANGE_LANGUAGE (User wants to change the bot's language or is asking about language settings)
+       - CHANGE_LANGUAGE (User wants to change the bot's language, OR user just typed the name of a language like "Telugu", "Marathi", "Tamil")
        - TRANSFER (User wants to transfer custody of a batch to someone else)
        - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
        - UNKNOWN (Does not fit any category)
-    4. If the user explicitly asks to speak in a specific language (e.g. "Talk to me in Telugu", "Hindi please"), set `requested_language_code` to the 2-letter ISO code for that language (e.g. 'te' for Telugu, 'hi' for Hindi, 'bn' for Bengali, 'en' for English). Otherwise, leave it empty.
+    4. If the user explicitly asks to speak in a specific language (e.g. "Talk to me in Telugu", "Hindi please", or just "Marathi"), set `requested_language_code` to the 2-letter ISO 639-1 code for that language (e.g. 'te' for Telugu, 'mr' for Marathi, 'ta' for Tamil, 'hi' for Hindi). Otherwise, leave it empty.
 
     User message: "{text}"
     """
@@ -78,11 +78,11 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
        - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
        - HIVE_STATUS (User wants to check the IoT status of their hive or box condition)
        - MAIN_MENU (User is saying hi, hello, or asking for the menu)
-       - CHANGE_LANGUAGE (User wants to change the bot's language or is asking about language settings)
+       - CHANGE_LANGUAGE (User wants to change the bot's language, OR user just typed the name of a language like "Telugu", "Marathi", "Tamil")
        - TRANSFER (User wants to transfer custody of a batch to someone else)
        - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
        - UNKNOWN (Does not fit any category)
-    4. If the user explicitly asks to speak in a specific language, set `requested_language_code` to the 2-letter ISO code for that language (e.g. 'te' for Telugu, 'hi' for Hindi). Otherwise, leave it empty.
+    4. If the user explicitly asks to speak in a specific language, set `requested_language_code` to the 2-letter ISO 639-1 code for that language (e.g. 'te' for Telugu, 'mr' for Marathi, 'ta' for Tamil). Otherwise, leave it empty.
     """
     
     try:
