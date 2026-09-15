@@ -159,7 +159,7 @@ async def generate_onboarding_response(user_text: str, lang: str = "en") -> tupl
        CRITICAL: You MUST end the response with a clear call-to-action. Ask them if they would like to register now or if they want to know more about how the Pollinator App works.
 
     2. If the user is asking a question, answer it briefly using the project context.
-       CRITICAL: After answering, always ask if they are ready to register or if they have any other questions about the Pollinator App.
+       CRITICAL: After answering, always ask if they are ready to register or if they have any other questions about the Pollinator App. Remind them that voice notes are welcome for any queries.
 
     3. If the user seems ready to join, register, or says 'yes', signal that registration should start.
 

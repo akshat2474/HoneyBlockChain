@@ -17,6 +17,6 @@ async def handle_main_menu(wa_id: str, lang: str = "en"):
         }
     ]
 
-    text = "👋 Welcome to HoneyBlockChain!\n\nPlease select an option from the menu below:"
+    text = "👋 Welcome to HoneyBlockChain!\n\nPlease select an option from the menu below. You can also send me a text or voice message if you have a specific question!"
     await whatsapp_client.send_list(wa_id, text, sections, lang)
     await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": lang})
