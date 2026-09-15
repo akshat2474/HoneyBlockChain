@@ -128,11 +128,31 @@ async def handle_message(wa_id: str, message: dict):
 
     # -- 5.5 Global Intercepts - ANY STATE ------------------------------------
     if intent == "CHANGE_LANGUAGE" or "language" in english_text.lower():
-        # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE
+        # If the LLM successfully extracted the language they requested
+        req_lang = getattr(analysis, "requested_language_code", "").strip().lower()
+        if req_lang and len(req_lang) >= 2:
+            req_lang = req_lang[:2] # grab 'te', 'hi', etc.
+            update_user_language(wa_id, req_lang)
+            # Update current session so the success message uses the new language
+            current_lang = req_lang
+            
+            # Map basic codes to names for the success message
+            lang_names = {"en": "English", "hi": "Hindi", "bn": "Bengali", "te": "Telugu", "ta": "Tamil", "mr": "Marathi"}
+            lang_name = lang_names.get(req_lang, req_lang.upper())
+            
+            await whatsapp_client.send_text(
+                wa_id, f"✅ Language updated to {lang_name}!\n\nYou can send 'menu' to return to the main options.", current_lang
+            )
+            # Make sure to clear any stuck state like SETTINGS_CHOOSE_LANGUAGE
+            if state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
+                await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": current_lang})
+            return
+
+        # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE if they didn't specify one
         buttons = [
             {"type": "reply", "reply": {"id": "lang_en", "title": "English"}},
             {"type": "reply", "reply": {"id": "lang_hi", "title": "Hindi"}},
-            {"type": "reply", "reply": {"id": "lang_bn", "title": "Bengali"}},
+            {"type": "reply", "reply": {"id": "lang_te", "title": "Telugu"}},
         ]
         await whatsapp_client.send_buttons(wa_id, "Please select your preferred language:", buttons, current_lang)
         await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})

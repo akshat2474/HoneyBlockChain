@@ -7,6 +7,7 @@ class IncomingAnalysis(BaseModel):
     translated_english_text: str
     detected_language: str
     intent: str  # REGISTRATION, HEALTH_CHECK, BOX_CONDITION, MAIN_MENU, CHANGE_LANGUAGE, ASK_DOUBT, HIVE_STATUS, TRANSFER, VERIFY_BATCH, UNKNOWN
+    requested_language_code: str = ""  # If user asks for a specific language (e.g. 'te', 'hi'), output code here. Else empty.
 
 # Load Gemini API Key
 api_key = getattr(settings, "GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
@@ -24,7 +25,7 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
     Analyze the following user message sent to a Beekeeper WhatsApp Bot.
 
     1. Translate the message into English.
-    2. Detect the original language (e.g., 'hi' for Hindi/Hinglish, 'en' for English, 'bn' for Bengali).
+    2. Detect the original language (e.g., 'hi' for Hindi/Hinglish, 'en' for English, 'bn' for Bengali, 'te' for Telugu).
     3. Categorize the INTENT into one of the following:
        - REGISTRATION (User wants to register or join)
        - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
@@ -34,6 +35,7 @@ def analyze_incoming_text(text: str) -> IncomingAnalysis:
        - TRANSFER (User wants to transfer custody of a batch to someone else)
        - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
        - UNKNOWN (Does not fit any category)
+    4. If the user explicitly asks to speak in a specific language (e.g. "Talk to me in Telugu", "Hindi please"), set `requested_language_code` to the 2-letter ISO code for that language (e.g. 'te' for Telugu, 'hi' for Hindi, 'bn' for Bengali, 'en' for English). Otherwise, leave it empty.
 
     User message: "{text}"
     """
@@ -70,7 +72,7 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
     Analyze this voice note sent by a farmer to a Beekeeper WhatsApp Bot.
 
     1. Transcribe the audio and translate the message into English.
-    2. Detect the original language (e.g., 'hi' for Hindi/Hinglish, 'en' for English, 'bn' for Bengali).
+    2. Detect the original language (e.g., 'hi' for Hindi/Hinglish, 'en' for English, 'bn' for Bengali, 'te' for Telugu).
     3. Categorize the INTENT into one of the following:
        - REGISTRATION (User wants to register or join)
        - ASK_DOUBT (User is asking a question about bees, harvesting, or asking for help)
@@ -80,6 +82,7 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
        - TRANSFER (User wants to transfer custody of a batch to someone else)
        - VERIFY_BATCH (User wants to check the status or verify a batch ID on the blockchain)
        - UNKNOWN (Does not fit any category)
+    4. If the user explicitly asks to speak in a specific language, set `requested_language_code` to the 2-letter ISO code for that language (e.g. 'te' for Telugu, 'hi' for Hindi). Otherwise, leave it empty.
     """
     
     try:

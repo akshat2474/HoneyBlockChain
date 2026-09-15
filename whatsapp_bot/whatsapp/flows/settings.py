@@ -26,7 +26,7 @@ async def handle_settings(wa_id: str, message: dict, state: str, data: dict, lan
                 selected_lang = interactive_id.replace("lang_", "")
         elif text:
             # Basic mapping for text input
-            mapping = {"english": "en", "hindi": "hi", "hinglish": "hi", "bengali": "bn", "bangla": "bn"}
+            mapping = {"english": "en", "hindi": "hi", "hinglish": "hi", "bengali": "bn", "bangla": "bn", "telugu": "te"}
             text_lower = text.lower()
             if text_lower in mapping:
                 selected_lang = mapping[text_lower]
