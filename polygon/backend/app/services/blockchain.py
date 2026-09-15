@@ -48,8 +48,8 @@ def _build_and_send(func_call) -> str:
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
             "gas": int(gas * 1.2),
-            "maxFeePerGas": Web3.to_wei(40, 'gwei'),
-            "maxPriorityFeePerGas": Web3.to_wei(40, 'gwei'),
+            "maxFeePerGas": Web3.to_wei(10, 'gwei'),
+            "maxPriorityFeePerGas": Web3.to_wei(10, 'gwei'),
         }
     )
     signed = w3.eth.account.sign_transaction(tx, private_key=_PRIVATE_KEY)
