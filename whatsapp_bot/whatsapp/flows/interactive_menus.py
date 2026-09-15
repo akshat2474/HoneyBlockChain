@@ -1,4 +1,4 @@
-﻿import time
+import time
 from whatsapp.client import whatsapp_client
 from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
@@ -56,14 +56,17 @@ async def handle_interactive_menus(
             return
 
         elif interactive_id == "menu_market_schemes":
-            buttons = [
-                {"type": "reply", "reply": {"id": "market_subsidy",  "title": "Govt Subsidies"}},
-                {"type": "reply", "reply": {"id": "market_prices",   "title": "Honey Prices"}},
-                {"type": "reply", "reply": {"id": "market_register", "title": "Quick Register"}},
-                {"type": "reply", "reply": {"id": "market_full_harvest", "title": "Professional Harvest"}},
-            ]
-            await whatsapp_client.send_buttons(
-                wa_id, "What are you looking for?", buttons, lang
+            sections = [{
+                "title": "Harvest & Market",
+                "rows": [
+                    {"id": "market_subsidy",      "title": "Govt Subsidies",      "description": "KVIC & National Honey Mission schemes"},
+                    {"id": "market_prices",       "title": "Honey Prices",        "description": "Current farmgate rates"},
+                    {"id": "market_register",     "title": "Quick Harvest",       "description": "Register a harvest quickly"},
+                    {"id": "market_full_harvest", "title": "Pro Harvest",         "description": "Full professional harvest registration"},
+                ]
+            }]
+            await whatsapp_client.send_list(
+                wa_id, "🍯 What are you looking for?", sections, lang
             )
             await redis_service.set_session(wa_id, ConversationState.MENU_MARKET, data)
             return
