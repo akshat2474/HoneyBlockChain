@@ -71,7 +71,7 @@ async def handle_message(wa_id: str, message: dict):
         analysis     = analyze_incoming_text(original_text)
         lang         = analysis.detected_language
         english_text = analysis.translated_english_text
-        # Bug fix #2: normalise intent — LLM may return lowercase or spaces
+        # Bug fix #2: normalise intent â€” LLM may return lowercase or spaces
         intent = analysis.intent.upper().replace(" ", "_").strip()
         print(f"[LLM TEXT]  lang={lang} | intent={intent} | text={english_text!r}")
 
@@ -126,7 +126,19 @@ async def handle_message(wa_id: str, message: dict):
         update_user_language(wa_id, safe_lang)
     current_lang = user_meta.language if user_meta.language not in ("", "UNKNOWN") else "en"
 
-    # -- 6. Global intercepts — IDLE / MAIN_MENU -------------------------------
+    # -- 5.5 Global Intercepts - ANY STATE ------------------------------------
+    if intent == "CHANGE_LANGUAGE" or "language" in english_text.lower():
+        # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE
+        buttons = [
+            {"type": "reply", "reply": {"id": "lang_en", "title": "English"}},
+            {"type": "reply", "reply": {"id": "lang_hi", "title": "Hindi"}},
+            {"type": "reply", "reply": {"id": "lang_bn", "title": "Bengali"}},
+        ]
+        await whatsapp_client.send_buttons(wa_id, "Please select your preferred language:", buttons, current_lang)
+        await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})
+        return
+
+    # -- 6. Global intercepts â€” IDLE / MAIN_MENU -------------------------------
     if state in (ConversationState.IDLE, ConversationState.MAIN_MENU):
         if not is_registered:
             greeting_intents  = ("MAIN_MENU", "REGISTRATION")
@@ -154,18 +166,6 @@ async def handle_message(wa_id: str, message: dict):
         # -- Registered user shortcuts -----------------------------------------
         if intent in ("MAIN_MENU",) or english_text.lower() in ("hi", "hello", "menu"):
             await handle_main_menu(wa_id, current_lang)
-            return
-
-        if intent == "CHANGE_LANGUAGE" or "language" in english_text.lower():
-            from whatsapp.flows.settings import handle_settings
-            # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE
-            buttons = [
-                {"type": "reply", "reply": {"id": "lang_en", "title": "English"}},
-                {"type": "reply", "reply": {"id": "lang_hi", "title": "Hindi"}},
-                {"type": "reply", "reply": {"id": "lang_bn", "title": "Bengali"}},
-            ]
-            await whatsapp_client.send_buttons(wa_id, "Please select your preferred language:", buttons, current_lang)
-            await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})
             return
 
         if (
@@ -342,7 +342,7 @@ async def handle_message(wa_id: str, message: dict):
         await redis_service.set_session(wa_id, ConversationState.IDLE, {})
 
     else:
-        # Unknown / orphaned state — reset gracefully, never go silent
+        # Unknown / orphaned state â€” reset gracefully, never go silent
         print(f"[FSM] Unknown state '{state}' for {wa_id}. Resetting to idle.")
         await redis_service.set_session(wa_id, ConversationState.IDLE, {})
         if is_registered:
