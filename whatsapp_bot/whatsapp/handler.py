@@ -271,7 +271,13 @@ async def handle_message(wa_id: str, message: dict):
                     )
             return
 
-        # Robust Fallback: Registered user sent something we don't understand in IDLE state
+        # If they tapped something from the list menu (e.g. Box Condition, Health) — route to interactive handler
+        if interactive_id:
+            from whatsapp.flows.interactive_menus import handle_interactive_menus
+            await handle_interactive_menus(wa_id, message, state, data, current_lang)
+            return
+
+        # Robust Fallback: Registered user sent free text we don't understand in IDLE state
         await whatsapp_client.send_text(
             wa_id,
             "I'm not sure I understood that. You can send 'menu' to see what I can do, or ask me a question about HoneyChain!",
