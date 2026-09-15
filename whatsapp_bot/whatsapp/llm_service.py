@@ -171,12 +171,19 @@ def analyze_incoming_audio(audio_bytes: bytes) -> IncomingAnalysis:
         print(f"LLM Audio Analysis Error: {e}")
         return IncomingAnalysis(translated_english_text="[Audio processing failed]", detected_language="en", intent="UNKNOWN")
 
+_translation_cache = {}
+
 def translate_outgoing_text(english_text: str, target_language: str) -> str:
     """
     Translates the bot's English response into the user's preferred language.
+    Uses an in-memory cache to prevent hitting rate limits for static UI elements.
     """
     if not client or target_language == "en":
         return english_text
+
+    cache_key = f"{target_language}:{english_text}"
+    if cache_key in _translation_cache:
+        return _translation_cache[cache_key]
 
     prompt = f"""
     Translate the following English message for a Beekeeper into the language code '{target_language}'.
@@ -192,7 +199,9 @@ def translate_outgoing_text(english_text: str, target_language: str) -> str:
             contents=prompt,
             config={'temperature': 0.1}
         )
-        return response.text.strip()
+        translated = response.text.strip()
+        _translation_cache[cache_key] = translated
+        return translated
     except Exception as e:
         print(f"LLM Outgoing Translation Error: {e}")
         return english_text

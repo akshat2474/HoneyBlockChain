@@ -146,9 +146,7 @@ async def handle_message(wa_id: str, message: dict):
             lang_name = lang_names.get(req_lang, req_lang.upper())
             
             msg = f"✅ Language updated to {lang_name}!\n\nReturning to the main menu..."
-            await whatsapp_client.send_text(
-                wa_id, translate_outgoing_text(msg, current_lang), current_lang
-            )
+            await whatsapp_client.send_text(wa_id, msg, current_lang)
             
             # Reset their state so they aren't stuck in a half-finished flow
             if is_registered:
@@ -163,15 +161,11 @@ async def handle_message(wa_id: str, message: dict):
                 await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
                 await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
             return
-
-        # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE if they didn't specify one
-        await whatsapp_client.send_text(
-            wa_id,
-            "Which language would you like to use? (Please type the name of the language, e.g., Telugu, Marathi, Hindi)",
-            current_lang
-        )
-        await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})
-        return
+        else:
+            # They want to change language, but didn't specify which one
+            reply = "Which language would you like to use? (Please type the name of the language, e.g., Telugu, Marathi, Hindi)"
+            await whatsapp_client.send_text(wa_id, reply, current_lang)
+            return
 
     # -- 5.6 Global Menu / Cancel Intercept -----------------------------------
     greeting_intents = ("MAIN_MENU", "REGISTRATION") if not is_registered else ("MAIN_MENU",)

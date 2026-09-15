@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import httpx
 from config import settings
 
@@ -72,11 +72,12 @@ class WhatsAppClient:
 
         translated_buttons = []
         for btn in buttons:
+            translated_title = await self._translate(btn["reply"]["title"], lang)
             new_btn = {
                 "type": btn["type"],
                 "reply": {
                     "id": btn["reply"]["id"],
-                    "title": await self._translate(btn["reply"]["title"], lang),
+                    "title": translated_title[:20],  # WhatsApp limit is 20 chars
                 },
             }
             translated_buttons.append(new_btn)
@@ -98,16 +99,20 @@ class WhatsAppClient:
         translated_sections = []
         for sec in sections:
             new_sec = sec.copy()
-            new_sec["title"] = await self._translate(sec["title"], lang)
+            translated_sec_title = await self._translate(sec["title"], lang)
+            new_sec["title"] = translated_sec_title[:24]  # WhatsApp limit is 24 chars
             new_rows = []
             for row in sec["rows"]:
                 new_row = row.copy()
-                new_row["title"] = await self._translate(row["title"], lang)
-                new_row["description"] = await self._translate(row.get("description", ""), lang)
+                translated_row_title = await self._translate(row["title"], lang)
+                translated_row_desc = await self._translate(row.get("description", ""), lang)
+                new_row["title"] = translated_row_title[:24]
+                new_row["description"] = translated_row_desc[:72]
                 new_rows.append(new_row)
             new_sec["rows"] = new_rows
             translated_sections.append(new_sec)
 
+        translated_menu_btn = await self._translate("Menu", lang)
         return await self._send({
             "messaging_product": "whatsapp",
             "to": to,
@@ -116,7 +121,7 @@ class WhatsAppClient:
                 "type": "list",
                 "body": {"text": translated_text},
                 "action": {
-                    "button": await self._translate("Menu", lang),
+                    "button": translated_menu_btn[:20],
                     "sections": translated_sections,
                 },
             },
