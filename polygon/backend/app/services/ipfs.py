@@ -74,6 +74,20 @@ def gateway_url(cid: Optional[str]) -> Optional[str]:
 
 
 def upload_file(file_bytes: bytes, filename: str) -> tuple[str, str]:
-    # HACK: Bypass Pinata upload for Vercel 10s timeout during live demo
+    """
+    Upload file bytes to Pinata IPFS.
+    Returns (cid, file_hash_hex) where file_hash_hex is the SHA-256 of the bytes.
+    """
     file_hash = hashlib.sha256(file_bytes).hexdigest()
-    return "QmDummyDemoCIDForVercelTimeoutBypass", file_hash
+    files = {
+        'file': (filename, file_bytes)
+    }
+    response = requests.post(
+        _PIN_FILE_URL,
+        files=files,
+        headers=_auth_headers(),
+        timeout=30,
+    )
+    response.raise_for_status()
+    cid = response.json()["IpfsHash"]
+    return cid, file_hash
