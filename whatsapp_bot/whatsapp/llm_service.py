@@ -136,7 +136,7 @@ async def generate_onboarding_response(user_text: str, lang: str = "en") -> tupl
     Returns (response_text, should_start_registration).
     """
     if not client:
-        return "Welcome to HoneyChain! We help beekeepers track their honey and get fair prices. Would you like to register?", True
+        return "Welcome to HoneyChain! We help beekeepers track their honey and get fair prices using the Pollinator App. Would you like to register now or know more about it?", True
 
     project_context = """
     You are the welcoming ambassador for 'HoneyChain' and the 'Pollinator App'.
@@ -156,12 +156,16 @@ async def generate_onboarding_response(user_text: str, lang: str = "en") -> tupl
 
     Task:
     1. If the user is saying 'hi' or 'hello', give a warm, 2-sentence introduction to HoneyChain and the Pollinator App. Explain how it helps them get better prices and transparency.
-    2. If the user is asking a question, answer it briefly using the project context and guide them toward registration.
+       CRITICAL: You MUST end the response with a clear call-to-action. Ask them if they would like to register now or if they want to know more about how the Pollinator App works.
+
+    2. If the user is asking a question, answer it briefly using the project context.
+       CRITICAL: After answering, always ask if they are ready to register or if they have any other questions about the Pollinator App.
+
     3. If the user seems ready to join, register, or says 'yes', signal that registration should start.
 
     Response format (JSON):
     {{
-        "response": "Your friendly response in English",
+        "response": "Your friendly response in English, including a clear question or call-to-action at the end",
         "ready_to_register": true/false
     }}
     """
