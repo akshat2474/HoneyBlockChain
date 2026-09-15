@@ -141,13 +141,23 @@ async def handle_message(wa_id: str, message: dict):
             lang_names = {"en": "English", "hi": "Hindi", "bn": "Bengali", "te": "Telugu", "ta": "Tamil", "mr": "Marathi"}
             lang_name = lang_names.get(req_lang, req_lang.upper())
             
-            msg = f"✅ Language updated to {lang_name}!\n\nYou can send 'menu' to return to the main options."
+            msg = f"✅ Language updated to {lang_name}!\n\nReturning to the main menu..."
             await whatsapp_client.send_text(
                 wa_id, translate_outgoing_text(msg, current_lang), current_lang
             )
-            # Clear stuck settings state
-            if state == ConversationState.SETTINGS_CHOOSE_LANGUAGE:
-                await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": current_lang})
+            
+            # Reset their state so they aren't stuck in a half-finished flow
+            if is_registered:
+                await handle_main_menu(wa_id, current_lang)
+            else:
+                buttons = [
+                    {"type": "reply", "reply": {"id": "onboard_register", "title": "Register Now"}},
+                    {"type": "reply", "reply": {"id": "onboard_info", "title": "About App"}},
+                    {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
+                ]
+                welcome_text = "👋 Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
+                await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
+                await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
             return
 
         # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE if they didn't specify one
@@ -159,35 +169,37 @@ async def handle_message(wa_id: str, message: dict):
         await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": current_lang})
         return
 
+    # -- 5.6 Global Menu / Cancel Intercept -----------------------------------
+    greeting_intents = ("MAIN_MENU", "REGISTRATION") if not is_registered else ("MAIN_MENU",)
+    greeting_keywords = ("hi", "hello", "menu", "start", "cancel")
+    if intent in greeting_intents or english_text.lower() in greeting_keywords:
+        if not is_registered:
+            # Provide a menu for new users instead of jumping straight to registration
+            buttons = [
+                {"type": "reply", "reply": {"id": "onboard_register", "title": "Register Now"}},
+                {"type": "reply", "reply": {"id": "onboard_info", "title": "About App"}},
+                {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
+            ]
+            welcome_text = "👋 Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
+            await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
+            await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
+            return
+        else:
+            await handle_main_menu(wa_id, current_lang)
+            return
+
     # -- 6. Global intercepts — IDLE / MAIN_MENU -------------------------------
     if state in (ConversationState.IDLE, ConversationState.MAIN_MENU):
         if not is_registered:
-            greeting_intents  = ("MAIN_MENU", "REGISTRATION")
-            greeting_keywords = ("hi", "hello", "menu", "register", "start")
-            if intent in greeting_intents or english_text.lower() in greeting_keywords:
-                # Provide a menu for new users instead of jumping straight to registration
-                buttons = [
-                    {"type": "reply", "reply": {"id": "onboard_register", "title": "Register Now"}},
-                    {"type": "reply", "reply": {"id": "onboard_info", "title": "About App"}},
-                    {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
-                ]
-                welcome_text = "👋 Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
-                await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
-                await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
-                return
-            else:
-                # Bug fix #3: unregistered user free-text was silently dropped
-                await whatsapp_client.send_text(
-                    wa_id,
-                    "Welcome to HoneyChain! Please send *hi* to get started.",
-                    current_lang,
-                )
+            # Bug fix #3: unregistered user free-text was silently dropped
+            await whatsapp_client.send_text(
+                wa_id,
+                "Welcome to HoneyChain! Please send *hi* to get started.",
+                current_lang,
+            )
             return
 
         # -- Registered user shortcuts -----------------------------------------
-        if intent in ("MAIN_MENU",) or english_text.lower() in ("hi", "hello", "menu"):
-            await handle_main_menu(wa_id, current_lang)
-            return
 
         if (
             interactive_id == "menu_transfer"
