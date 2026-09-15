@@ -301,12 +301,21 @@ async def handle_message(wa_id: str, message: dict):
             await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
             return
 
-        # If user types something else while in ONBOARDING
-        await whatsapp_client.send_text(
-            wa_id,
-            "Please select an option from the menu above to get started. (Send 'hi' to see the menu again)",
-            current_lang
-        )
+        # If the user asks a question or says something else, let the onboarding LLM handle it!
+        from whatsapp.llm_service import generate_onboarding_response
+        # We pass english_text so the LLM understands the question
+        response_text, ready = await generate_onboarding_response(english_text, current_lang)
+        
+        # We need to translate the response back to their language
+        from whatsapp.llm_service import translate_outgoing_text
+        if current_lang != "en":
+            response_text = translate_outgoing_text(response_text, current_lang)
+            
+        await whatsapp_client.send_text(wa_id, response_text, current_lang)
+        
+        if ready:
+            await redis_service.set_session(wa_id, ConversationState.REGISTRATION_NAME, {})
+            
         return
 
     elif state.startswith("REGISTRATION_"):
