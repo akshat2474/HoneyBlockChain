@@ -170,7 +170,7 @@ async def handle_message(wa_id: str, message: dict):
                     {"type": "reply", "reply": {"id": "onboard_info", "title": "About App"}},
                     {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
                 ]
-                welcome_text = "?? Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
+                welcome_text = "👋 Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
                 await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
                 await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
                 return
