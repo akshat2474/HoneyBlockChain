@@ -119,19 +119,17 @@ async def handle_message(wa_id: str, message: dict):
         db.close()
 
     # -- 5. User language ------------------------------------------------------
+    # Bug fix #17: never store "UNKNOWN" as the user language
     safe_lang = lang if lang not in ("", "UNKNOWN") else "en"
-    user_meta = get_or_create_user(wa_id, "en")
+    user_meta = get_or_create_user(wa_id, safe_lang)
+    # Only auto-update language implicitly if the message is substantial (>= 3 words) 
+    # or if it's a voice note, to prevent short words like "non" from switching the bot to French!
+    word_count = len(original_text.split()) if msg_type == "text" else 0
+    if safe_lang not in ("en",) and msg_type in ("text", "audio"):
+        if msg_type == "audio" or word_count >= 3:
+            update_user_language(wa_id, safe_lang)
+            user_meta.language = safe_lang
     current_lang = user_meta.language if user_meta.language not in ("", "UNKNOWN") else "en"
-    
-    # Auto-update language from normal chat, but NEVER during data entry flows (where 1-word answers like 'Non' might trigger French)
-    if state in (ConversationState.IDLE, ConversationState.MAIN_MENU, ConversationState.ONBOARDING):
-        if safe_lang not in ("", "UNKNOWN", current_lang) and msg_type in ("text", "audio"):
-            # Don't switch to English just because they said "hi" or "menu"
-            if safe_lang == "en" and original_text.lower().strip() in ("hi", "hello", "menu", "start"):
-                pass
-            else:
-                update_user_language(wa_id, safe_lang)
-                current_lang = safe_lang
 
     # -- 5.5 Global Intercepts - ANY STATE ------------------------------------
     if intent == "CHANGE_LANGUAGE" or "language" in english_text.lower():
