@@ -147,7 +147,7 @@ async def handle_message(wa_id: str, message: dict):
                 # Provide a menu for new users instead of jumping straight to registration
                 buttons = [
                     {"type": "reply", "reply": {"id": "onboard_register", "title": "Register Now"}},
-                    {"type": "reply", "reply": {"id": "onboard_info", "title": "What is Pollinator App?"}},
+                    {"type": "reply", "reply": {"id": "onboard_info", "title": "About App"}},
                     {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
                 ]
                 welcome_text = "?? Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
@@ -258,9 +258,27 @@ async def handle_message(wa_id: str, message: dict):
         if interactive_id == "onboard_info":
             from whatsapp.llm_service import generate_onboarding_response
             # We pass a specific trigger to the LLM for "info"
-            response_text, ready = await generate_onboarding_//...
+            response_text, ready = await generate_onboarding_response("info", wa_id)
+            await whatsapp_client.send_text(wa_id, response_text, current_lang)
+            return
+            
+        if interactive_id == "onboard_doubt":
+            await whatsapp_client.send_text(
+                wa_id,
+                "Sure! Please type your question, and I will try to answer it.",
+                current_lang
+            )
+            return
 
-    if state.startswith("REGISTRATION_"):
+        # If user types something else while in ONBOARDING
+        await whatsapp_client.send_text(
+            wa_id,
+            "Please select an option from the menu above to get started.",
+            current_lang
+        )
+        return
+
+    elif state.startswith("REGISTRATION_"):
         await handle_registration(wa_id, message, state, data, current_lang)
 
     elif state in (
