@@ -124,6 +124,7 @@ async def handle_message(wa_id: str, message: dict):
     user_meta = get_or_create_user(wa_id, safe_lang)
     if safe_lang not in ("en",) and msg_type in ("text", "audio"):
         update_user_language(wa_id, safe_lang)
+        user_meta.language = safe_lang
     current_lang = user_meta.language if user_meta.language not in ("", "UNKNOWN") else "en"
 
     # -- 5.5 Global Intercepts - ANY STATE ------------------------------------
@@ -305,11 +306,6 @@ async def handle_message(wa_id: str, message: dict):
         from whatsapp.llm_service import generate_onboarding_response
         # We pass english_text so the LLM understands the question
         response_text, ready = await generate_onboarding_response(english_text, current_lang)
-        
-        # We need to translate the response back to their language
-        from whatsapp.llm_service import translate_outgoing_text
-        if current_lang != "en":
-            response_text = translate_outgoing_text(response_text, current_lang)
             
         await whatsapp_client.send_text(wa_id, response_text, current_lang)
         
