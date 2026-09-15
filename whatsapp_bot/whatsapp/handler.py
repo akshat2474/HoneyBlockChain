@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from whatsapp.client import whatsapp_client
 from whatsapp.fsm import redis_service
 from whatsapp.states import ConversationState
@@ -50,7 +50,7 @@ async def handle_message(wa_id: str, message: dict):
         if msg_type == "text" else ""
     )
 
-    # ── 0. Deduplication & spam guard ────────────────────────────────────────
+    # -- 0. Deduplication & spam guard ----------------------------------------
     # Bug fix #22: these methods were built but never called
     if msg_id and await redis_service.is_duplicate_message(msg_id):
         print(f"[DEDUP] Skipping duplicate message {msg_id}")
@@ -59,28 +59,10 @@ async def handle_message(wa_id: str, message: dict):
         print(f"[SPAM]  Throttling {wa_id}")
         return
 
-    # ── GLOBAL INTERCEPT: Language Change ────────────────────────────────────
-    # We check this FIRST so users can change language even mid-flow
-    if intent == "CHANGE_LANGUAGE" or "language" in english_text.lower():
-        from whatsapp.flows.settings import handle_settings
-        # Prompt for language and move to SETTINGS_CHOOSE_LANGUAGE
-        buttons = [
-            {"type": "reply", "reply": {"id": "lang_en", "title": "English"}},
-            {"type": "reply", "reply": {"id": "lang_hi", "title": "Hindi"}},
-            {"type": "reply", "reply": {"id": "lang_bn", "title": "Bengali"}},
-        ]
-        # We use the current detected language for the prompt to be helpful
-        prompt_lang = lang if lang not in ("", "UNKNOWN") else "en"
-        await whatsapp_client.send_buttons(wa_id, "Please select your preferred language:", buttons, prompt_lang)
-        await redis_service.set_session(wa_id, ConversationState.SETTINGS_CHOOSE_LANGUAGE, {"language": prompt_lang})
-        return
-
-    # ── Mark as read (blue ticks) ─────────────────────────────────────────────
-    # Bug fix #12: wrapped inside mark_as_read itself now — no crash here
     if msg_id:
         await whatsapp_client.mark_as_read(msg_id)
 
-    # ── 1. LLM analysis of incoming message ──────────────────────────────────
+    # -- 1. LLM analysis of incoming message ----------------------------------
     lang         = "en"
     english_text = original_text
     intent       = "UNKNOWN"
@@ -89,7 +71,7 @@ async def handle_message(wa_id: str, message: dict):
         analysis     = analyze_incoming_text(original_text)
         lang         = analysis.detected_language
         english_text = analysis.translated_english_text
-        # Bug fix #2: normalise intent — LLM may return lowercase or spaces
+        # Bug fix #2: normalise intent � LLM may return lowercase or spaces
         intent = analysis.intent.upper().replace(" ", "_").strip()
         print(f"[LLM TEXT]  lang={lang} | intent={intent} | text={english_text!r}")
 
@@ -112,14 +94,14 @@ async def handle_message(wa_id: str, message: dict):
                 )
                 return
 
-    # ── 2. Session from Redis ─────────────────────────────────────────────────
+    # -- 2. Session from Redis -------------------------------------------------
     state_data = await redis_service.get_session(wa_id)
     state      = state_data.get("state", ConversationState.IDLE)
     data       = state_data.get("data", {})
     # Inject translated text so flows do not need to re-translate
     data["english_text"] = english_text
 
-    # ── 3. Interactive reply id (button OR list) ──────────────────────────────
+    # -- 3. Interactive reply id (button OR list) ------------------------------
     # Bug fix #18: was only checking button_reply; list_reply was silently ignored
     interactive  = message.get("interactive", {})
     interactive_id = (
@@ -127,7 +109,7 @@ async def handle_message(wa_id: str, message: dict):
         or interactive.get("list_reply",  {}).get("id", "")
     )
 
-    # ── 4. Registration status ────────────────────────────────────────────────
+    # -- 4. Registration status ------------------------------------------------
     db = SessionLocal()
     try:
         is_registered = (
@@ -136,7 +118,7 @@ async def handle_message(wa_id: str, message: dict):
     finally:
         db.close()
 
-    # ── 5. User language ──────────────────────────────────────────────────────
+    # -- 5. User language ------------------------------------------------------
     # Bug fix #17: never store "UNKNOWN" as the user language
     safe_lang = lang if lang not in ("", "UNKNOWN") else "en"
     user_meta = get_or_create_user(wa_id, safe_lang)
@@ -144,7 +126,7 @@ async def handle_message(wa_id: str, message: dict):
         update_user_language(wa_id, safe_lang)
     current_lang = user_meta.language if user_meta.language not in ("", "UNKNOWN") else "en"
 
-    # ── 6. Global intercepts — IDLE / MAIN_MENU ───────────────────────────────
+    # -- 6. Global intercepts � IDLE / MAIN_MENU -------------------------------
     if state in (ConversationState.IDLE, ConversationState.MAIN_MENU):
         if not is_registered:
             greeting_intents  = ("MAIN_MENU", "REGISTRATION")
@@ -156,7 +138,7 @@ async def handle_message(wa_id: str, message: dict):
                     {"type": "reply", "reply": {"id": "onboard_info", "title": "What is Pollinator App?"}},
                     {"type": "reply", "reply": {"id": "onboard_doubt", "title": "Ask a Question"}},
                 ]
-                welcome_text = "👋 Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
+                welcome_text = "?? Welcome to *HoneyChain*!\n\nWe help beekeepers get fair prices and transparency through the *Pollinator App*. How can I help you today?"
                 await whatsapp_client.send_buttons(wa_id, welcome_text, buttons, current_lang)
                 await redis_service.set_session(wa_id, ConversationState.ONBOARDING, {})
                 return
@@ -169,7 +151,7 @@ async def handle_message(wa_id: str, message: dict):
                 )
             return
 
-        # ── Registered user shortcuts ─────────────────────────────────────────
+        # -- Registered user shortcuts -----------------------------------------
         if intent in ("MAIN_MENU",) or english_text.lower() in ("hi", "hello", "menu"):
             await handle_main_menu(wa_id, current_lang)
             return
@@ -260,7 +242,7 @@ async def handle_message(wa_id: str, message: dict):
         )
         return
 
-    # ── 7. FSM routing ────────────────────────────────────────────────────────
+    # -- 7. FSM routing --------------------------------------------------------
 
     if state == ConversationState.ONBOARDING:
         # Handle button selections from the welcome menu
@@ -360,7 +342,7 @@ async def handle_message(wa_id: str, message: dict):
         await redis_service.set_session(wa_id, ConversationState.IDLE, {})
 
     else:
-        # Unknown / orphaned state — reset gracefully, never go silent
+        # Unknown / orphaned state � reset gracefully, never go silent
         print(f"[FSM] Unknown state '{state}' for {wa_id}. Resetting to idle.")
         await redis_service.set_session(wa_id, ConversationState.IDLE, {})
         if is_registered:
