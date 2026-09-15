@@ -59,3 +59,20 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
                         background_tasks.add_task(handle_message, wa_id, message)
                     
     return JSONResponse({"status": "ok"})
+
+@app.get("/dev/reset-all")
+async def reset_all():
+    """Wipes the database and Redis cache completely so you can test as a new user."""
+    # 1. Reset Database
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
+    # 2. Reset Redis
+    from whatsapp.fsm import redis_service
+    try:
+        await redis_service.redis.flushdb()
+    except Exception as e:
+        print(f"Redis flush error: {e}")
+        
+    return {"status": "success", "message": "Database and Redis have been completely reset! You are now a new user."}
+
