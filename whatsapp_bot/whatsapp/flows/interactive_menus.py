@@ -43,7 +43,7 @@ async def handle_interactive_menus(wa_id: str, message: dict, state: str, data: 
         elif interactive_id == "health_condition":
             reply = "Hive 1: Excellent.\nHive 2: Needs attention.\nHive 3: Good.\nHive 4: Needs feeding soon."
         else:
-            await whatsapp_client.send_text(wa_id, "Please select an option from the menu.", lang)
+            await whatsapp_client.send_text(wa_id, "Please tap one of the buttons from the menu above.", lang)
             return
             
         buttons = [{"type": "reply", "reply": {"id": "btn_back", "title": "Back to Menu"}}]
@@ -65,6 +65,9 @@ async def handle_interactive_menus(wa_id: str, message: dict, state: str, data: 
             reply = "Let's register a new harvest.\n\nWhich hive are you harvesting from? (Enter the Hive Number, e.g. 1, 2, 3)"
             await whatsapp_client.send_text(wa_id, reply, lang)
             await redis_service.set_session(wa_id, ConversationState.HARVEST_HIVE_NUM, data)
+            return
+        else:
+            await whatsapp_client.send_text(wa_id, "Please tap one of the buttons from the menu above.", lang)
             return
 
     # 3. Handling Harvest Registration Flow
@@ -90,5 +93,10 @@ async def handle_interactive_menus(wa_id: str, message: dict, state: str, data: 
         await whatsapp_client.send_buttons(wa_id, reply, buttons, lang)
         # Reset state to idle or main menu
         await redis_service.set_session(wa_id, ConversationState.MAIN_MENU, {"language": lang})
+        return
+        
+    # 4. Fallback if they type text in MAIN_MENU instead of clicking
+    if not interactive_id and state == ConversationState.MAIN_MENU:
+        await whatsapp_client.send_text(wa_id, "Please tap one of the menu buttons above to continue.", lang)
         return
 

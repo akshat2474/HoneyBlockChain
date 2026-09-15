@@ -95,18 +95,29 @@ async def handle_message(wa_id: str, message: dict):
                 await handle_main_menu(wa_id, current_lang)
                 return
                 
-            if interactive_id == "menu_iot_status" or intent == "HIVE_STATUS" or "status" in english_text.lower():
+            if interactive_id == "menu_box_condition" or intent == "HIVE_STATUS" or "status" in english_text.lower() or "condition" in english_text.lower():
                 # Mock IoT response
-                iot_reply = "🍯 *IoT Hive Status*\n\n✅ Hive 1: Healthy (35°C, 45% Humidity)\n✅ Hive 2: Healthy (34°C, 46% Humidity)\n\nEverything looks good!"
+                iot_reply = "🍯 *IoT Box Condition*\n\n✅ Hive 1: Healthy (35°C, 45% Humidity)\n✅ Hive 2: Healthy (34°C, 46% Humidity)\n\nEverything looks good!"
                 await whatsapp_client.send_text(wa_id, iot_reply, current_lang)
                 return
 
             if intent == "ASK_DOUBT" or "honeychain" in english_text.lower():
                 from whatsapp.llm_service import client, settings
                 if client:
-                    prompt = f"You are HoneyChain support. Answer this farmer's query precisely in 1 or 2 short sentences (max 400 characters). User: {english_text}"
+                    last_query = data.get("last_query", "")
+                    last_reply = data.get("last_reply", "")
+                    
+                    context_str = f"Context of previous message:\nUser asked: '{last_query}'\nYou answered: '{last_reply}'\n\n" if last_query else ""
+                    prompt = f"{context_str}You are HoneyChain support. Answer this farmer's query precisely in 1 or 2 short sentences (max 400 characters). If they ask you to repeat or change language, repeat your previous answer. User: {english_text}"
+                    
                     try:
                         ans = client.models.generate_content(model=settings.GEMINI_MODEL, contents=prompt)
+                        
+                        # Save short-term memory to Redis
+                        data["last_query"] = original_text
+                        data["last_reply"] = ans.text
+                        await redis_service.set_session(wa_id, state, data)
+                        
                         await whatsapp_client.send_text(wa_id, f"🤖 {ans.text}", current_lang)
                     except Exception as e:
                         await whatsapp_client.send_text(wa_id, "Sorry, I couldn't process that right now.", current_lang)
